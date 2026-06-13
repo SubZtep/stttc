@@ -1,54 +1,20 @@
 #!/usr/bin/env bash
 #
 # Setup for stt push-to-talk — run it straight from the web:
-#   curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.0.1/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.0/setup.sh | bash
 #
 # Downloads the scripts, starts the speaches server, downloads the model, and
 # adds the Hyprland keybinding. Re-running is safe. Undo with:
-#   curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.0.1/setup.sh | bash -s -- --uninstall
+#   curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.0/setup.sh | bash -s -- --uninstall
 #
 set -euo pipefail
 
 REPO="${STT_REPO:-SubZtep/stt}"
-REF="${STT_REF:-v0.0.1}"
+REF="${STT_REF:-v0.1.0}"
 BASE="https://raw.githubusercontent.com/$REPO/$REF"
-BIN_DIR="$HOME/.local/bin"
-CONTAINER="speaches"
-MODEL="Systran/faster-whisper-small"
-HYPR_CONF="$HOME/.config/hypr/bindings.conf"
-KEY="SUPER, grave"
-MARK_START="# >>> stt push-to-talk >>>"
-MARK_END="# <<< stt push-to-talk <<<"
+CONFIG_FILE="$HOME/.config/stt.json"
 
 have() { command -v "$1" >/dev/null 2>&1; }
-
-# ---------------------------------------------------------------- uninstall
-
-if [ "${1:-}" = "--uninstall" ]; then
-  echo "Uninstalling stt…"
-
-  rm -f "$BIN_DIR/stt" "$BIN_DIR/stt-layout-lang"
-  echo "  removed scripts"
-
-  if [ -f "$HYPR_CONF" ] && grep -qF "$MARK_START" "$HYPR_CONF"; then
-    cp "$HYPR_CONF" "$HYPR_CONF.bak"
-    sed -i "/$MARK_START/,/$MARK_END/d" "$HYPR_CONF"
-    have hyprctl && hyprctl reload >/dev/null 2>&1 || true
-    echo "  removed keybinding (backup: $HYPR_CONF.bak)"
-  fi
-
-  if have docker && docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
-    docker rm -f "$CONTAINER" >/dev/null
-    echo "  removed container '$CONTAINER'"
-  fi
-
-  if have docker && docker volume ls --format '{{.Name}}' | grep -qx "hf-hub-cache"; then
-    docker volume rm hf-hub-cache >/dev/null 2>&1 && echo "  removed downloaded models" || true
-  fi
-
-  echo "Done."
-  exit 0
-fi
 
 # ---------------------------------------------------------------- checks
 
@@ -71,11 +37,10 @@ if [ -n "$missing_pkgs" ]; then
   if is_arch; then
     read -p "Install via pacman? [y/N] " -n 1 -r </dev/tty
     echo
-    if [[ $REPLY =~ ^[Yy]$ ]]
-    then
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
       # shellcheck disable=SC2086  # intentional: pass packages as separate args
-      sudo pacman -S --needed --noconfirm $missing_pkgs \
-        || echo "WARNING: pacman install failed — install manually and re-run." >&2
+      sudo pacman -S --needed --noconfirm $missing_pkgs ||
+        echo "WARNING: pacman install failed — install manually and re-run." >&2
     else
       echo "Install them with:"
       echo "  sudo pacman -S --needed $missing_pkgs"
@@ -86,8 +51,65 @@ if [ -n "$missing_pkgs" ]; then
 fi
 
 # hard requirements to proceed
-have curl   || { echo "ERROR: curl is required."   >&2; exit 1; }
+have curl || { echo "ERROR: curl is required." >&2; exit 1; }
 have docker || { echo "ERROR: docker is required." >&2; exit 1; }
+have jq || { echo "ERROR: jq is required." >&2; exit 1; }
+
+# ---------------------------------------------------------------- config
+
+if [ ! -f "$CONFIG_FILE" ]; then
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  if [ -f "$(dirname "$0")/config/default.json" ]; then
+    cp "$(dirname "$0")/config/default.json" "$CONFIG_FILE"
+  else
+    curl -fsSL "$BASE/config/default.json" -o "$CONFIG_FILE"
+  fi
+  echo "Created config: $CONFIG_FILE"
+fi
+
+cfg() { jq -r "$1 // empty" "$CONFIG_FILE"; }
+expand() { eval echo "$1"; } # expand $HOME etc. in config values
+
+BIN_DIR="$(expand "$(cfg '.bin')")"; BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
+CONTAINER="$(cfg '.container')"; CONTAINER="${CONTAINER:-speaches}"
+MODEL="$(cfg '.model')"; MODEL="${MODEL:-Systran/faster-whisper-small}"
+HYPR_CONF="$(expand "$(cfg '.hypr.config')")"; HYPR_CONF="${HYPR_CONF:-$HOME/.config/hypr/bindings.conf}"
+KEY="$(cfg '.hypr.key')"; KEY="${KEY:-SUPER, grave}"
+MARK_START="$(cfg '.hypr.mark[0]')"; MARK_START="${MARK_START:-# >>> stt >>>}"
+MARK_END="$(cfg '.hypr.mark[1]')"; MARK_END="${MARK_END:-# <<< stt <<<}"
+
+# ---------------------------------------------------------------- uninstall
+
+if [ "${1:-}" = "--uninstall" ]; then
+  echo "Uninstalling stt…"
+
+  rm -f "$BIN_DIR/stt" "$BIN_DIR/stt-layout-lang"
+  echo "  removed scripts"
+
+  if [ -f "$CONFIG_FILE" ]; then
+    rm -f "$CONFIG_FILE"
+    echo "  removed config ($CONFIG_FILE)"
+  fi
+
+  if [ -f "$HYPR_CONF" ] && grep -qF "$MARK_START" "$HYPR_CONF"; then
+    cp "$HYPR_CONF" "$HYPR_CONF.bak"
+    sed -i "/$MARK_START/,/$MARK_END/d" "$HYPR_CONF"
+    have hyprctl && hyprctl reload >/dev/null 2>&1 || true
+    echo "  removed keybinding (backup: $HYPR_CONF.bak)"
+  fi
+
+  if have docker && docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+    docker rm -f "$CONTAINER" >/dev/null
+    echo "  removed container '$CONTAINER'"
+  fi
+
+  if have docker && docker volume ls --format '{{.Name}}' | grep -qx "hf-hub-cache"; then
+    docker volume rm hf-hub-cache >/dev/null 2>&1 && echo "  removed downloaded models" || true
+  fi
+
+  echo "Done."
+  exit 0
+fi
 
 # ---------------------------------------------------------------- scripts
 
@@ -100,11 +122,22 @@ for f in stt stt-layout-lang; do
 done
 
 case ":$PATH:" in
-  *":$BIN_DIR:"*) ;;
-  *) echo "NOTE: $BIN_DIR is not on PATH — add it to your shell profile." ;;
+*":$BIN_DIR:"*) ;;
+*) echo "NOTE: $BIN_DIR is not on PATH — add it to your shell profile." ;;
 esac
 
 # ---------------------------------------------------------------- server
+
+url="$(cfg '.url')"; url="${url:-http://localhost:8000/v1}"
+
+download_model() {
+  local m="$1"
+  echo "Downloading model '$m'…"
+  for _ in $(seq 1 30); do
+    curl -fsS -X POST "$url/models/$m" >/dev/null 2>&1 && break
+    sleep 1
+  done
+}
 
 if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
   echo "Server: container '$CONTAINER' already exists — leaving it."
@@ -116,13 +149,14 @@ else
     -e ENABLE_UI=False \
     -v hf-hub-cache:/home/ubuntu/.cache/huggingface/hub \
     ghcr.io/speaches-ai/speaches:0.9.0-rc.3-cpu >/dev/null
-
-  echo "Downloading model '$MODEL'…"
-  for _ in $(seq 1 30); do
-    curl -fsS -X POST "http://localhost:8000/v1/models/$MODEL" >/dev/null 2>&1 && break
-    sleep 1
-  done
 fi
+
+download_model "$MODEL"
+
+mapfile -t lang_models < <(jq -r '.models // {} | to_entries[] | .value' "$CONFIG_FILE" 2>/dev/null || true)
+for lm in "${lang_models[@]}"; do
+  [ "$lm" != "$MODEL" ] && download_model "$lm"
+done
 
 # ---------------------------------------------------------------- keybinding
 
@@ -139,7 +173,7 @@ if have hyprctl; then
       echo "bind  = $KEY, exec, out=\$(STT_LANGUAGE=\$(stt-layout-lang) stt 2>/tmp/stt.err) && wl-copy -- \"\$out\" && notify-send \"stt\" \"\$out\" || notify-send \"stt error\" \"\$(cat /tmp/stt.err)\""
       echo "bindr = $KEY, exec, pkill -INT ffmpeg"
       echo "$MARK_END"
-    } >> "$HYPR_CONF"
+    } >>"$HYPR_CONF"
     hyprctl reload >/dev/null 2>&1 || true
     echo "Added keybinding ($KEY) -> $HYPR_CONF"
   fi

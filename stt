@@ -2,18 +2,36 @@
 # stt — record mic until SIGINT/SIGTERM, transcribe via a local speaches
 # server, print transcript to stdout (exit 0) or an error to stderr (exit 1).
 #
-# Env (optional):
-#   STT_URL       default http://localhost:8000/v1
-#   STT_MODEL     default Systran/faster-whisper-small
+# Env (optional, override config file values):
+#   STT_URL       base API URL
+#   STT_MODEL     model for transcription
 #   STT_LANGUAGE  e.g. "hu"
-#   STT_DEVICE    ffmpeg/pulse input device (default "default")
+#   STT_DEVICE    ffmpeg/pulse input device
 set -uo pipefail
 
-STT_URL="${STT_URL:-http://localhost:8000/v1}"
-STT_MODEL="${STT_MODEL:-Systran/faster-whisper-small}"
+_CFG="$HOME/.config/stt.json"
+_cfg() {
+  [ -f "$_CFG" ] && jq -r "$1 // empty" "$_CFG" 2>/dev/null || true
+}
+
+_default_url="$(_cfg '.url')"
+_default_url="${_default_url:-http://localhost:8000/v1}"
+_default_model="$(_cfg '.model')"
+_default_model="${_default_model:-Systran/faster-whisper-small}"
+_default_device="$(_cfg '.device')"
+_default_device="${_default_device:-default}"
+
+STT_URL="${STT_URL:-$_default_url}"
+STT_MODEL="${STT_MODEL:-$_default_model}"
+
+# If a language is set and the config has a language-specific model, use it
+if [ -n "${STT_LANGUAGE:-}" ]; then
+  _lang_model="$(_cfg ".models[\"$STT_LANGUAGE\"]")"
+  [ -n "$_lang_model" ] && STT_MODEL="$_lang_model"
+fi
 
 # Linux only (PulseAudio/PipeWire). STT_DEVICE overrides the input source.
-in_args=(-f pulse -i "${STT_DEVICE:-default}")
+in_args=(-f pulse -i "${STT_DEVICE:-$_default_device}")
 
 tmp="$(mktemp -t stt.XXXXXX.wav)"
 trap 'rm -f "$tmp"' EXIT
@@ -23,22 +41,34 @@ trap 'rm -f "$tmp"' EXIT
 # exit. The script ignores INT/TERM so it SURVIVES the same Ctrl+C and proceeds
 # to transcribe. For push-to-talk the key-release signals ffmpeg by name
 # (see README) — same clean-stop path.
-trap '' INT TERM                       # script ignores the stop signal
+trap '' INT TERM # script ignores the stop signal
 ffmpeg -loglevel error "${in_args[@]}" -ac 1 -ar 16000 -y "$tmp"
-trap - INT TERM                        # ffmpeg has exited; restore defaults
+trap - INT TERM # ffmpeg has exited; restore defaults
 
-[ -s "$tmp" ] || { echo "no audio captured" >&2; exit 1; }
+[ -s "$tmp" ] || {
+  echo "no audio captured" >&2
+  exit 1
+}
 
 args=(-s -m 120 -w $'\n%{http_code}' -X POST "$STT_URL/audio/transcriptions"
   -H "Authorization: Bearer cant-be-empty"
   -F "file=@$tmp" -F "model=$STT_MODEL" -F "response_format=text")
 [ -n "${STT_LANGUAGE:-}" ] && args+=(-F "language=$STT_LANGUAGE")
 
-resp="$(curl "${args[@]}")" || { echo "could not reach $STT_URL" >&2; exit 1; }
+resp="$(curl "${args[@]}")" || {
+  echo "could not reach $STT_URL" >&2
+  exit 1
+}
 code="${resp##*$'\n'}"
 body="${resp%$'\n'*}"
-[ "$code" = 200 ] || { echo "speaches error ($code): $body" >&2; exit 1; }
+[ "$code" = 200 ] || {
+  echo "speaches error ($code): $body" >&2
+  exit 1
+}
 
 text="$(printf '%s' "$body" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-[ -n "$text" ] || { echo "empty transcript" >&2; exit 1; }
+[ -n "$text" ] || {
+  echo "empty transcript" >&2
+  exit 1
+}
 printf '%s\n' "$text"

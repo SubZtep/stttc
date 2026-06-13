@@ -1,0 +1,17 @@
+{
+  "$schema": "https://github.com/SubZtep/stt/blob/v0.1.0/config/schema.json",
+  "url": "http://localhost:8000/v1",
+  "model": "Systran/faster-whisper-small",
+  "device": "default",
+  "bin": "$HOME/.local/bin",
+  "container": "speaches",
+  "hypr": {
+    "config": "$HOME/.config/hypr/bindings.conf",
+    "key": "SUPER, grave",
+    "mark": ["# >>> stt >>>", "# <<< stt <<<"]
+  },
+  "models": {
+    "en": "Systran/faster-whisper-medium.en",
+    "hu": "Maxdorger29/whisper-large-v3-turbo-hungarian-lora"
+  }
+}

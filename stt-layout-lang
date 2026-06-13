@@ -1,15 +1,47 @@
 #!/usr/bin/env bash
 # Print a Whisper language code based on the active Hyprland keyboard layout.
-# Hyprland + jq specific — used by the push-to-talk keybind, NOT by `stt`
-# itself (which stays portable). Adjust the cases for your layouts.
+# Language codes come from the "models" keys in ~/.config/stt.json — no extra
+# config needed. Adding a new language just requires adding it to "models".
 set -uo pipefail
 
-layout="$(hyprctl devices -j 2>/dev/null \
-  | jq -r '[.keyboards[] | select(.main)][0].active_keymap // empty' 2>/dev/null)"
+CFG="$HOME/.config/stt.json"
 
-case "$layout" in
-  Hungarian*) echo hu ;;
-  German*)    echo de ;;
-  English*|US*|UK*|GB*) echo en ;;
-  *)          echo en ;;   # fallback
-esac
+layout="$(hyprctl devices -j 2>/dev/null |
+  jq -r '[.keyboards[] | select(.main)][0].active_keymap // empty' 2>/dev/null)"
+
+[ -z "$layout" ] && echo "en" && exit 0
+
+# ISO 639-1 code -> substring that appears in Hyprland keymap display names
+lang_name() {
+  case "$1" in
+  af) echo "Afrikaans" ;; ar) echo "Arabic" ;; be) echo "Belarusian" ;;
+  bg) echo "Bulgarian" ;; bn) echo "Bengali" ;; cs) echo "Czech" ;;
+  da) echo "Danish" ;; de) echo "German" ;; el) echo "Greek" ;;
+  en) echo "English" ;; es) echo "Spanish" ;; et) echo "Estonian" ;;
+  fa) echo "Persian" ;; fi) echo "Finnish" ;; fr) echo "French" ;;
+  he) echo "Hebrew" ;; hi) echo "Hindi" ;; hr) echo "Croatian" ;;
+  hu) echo "Hungarian" ;; id) echo "Indonesian" ;; it) echo "Italian" ;;
+  ja) echo "Japanese" ;; ko) echo "Korean" ;; lt) echo "Lithuanian" ;;
+  lv) echo "Latvian" ;; mk) echo "Macedonian" ;; ms) echo "Malay" ;;
+  nl) echo "Dutch" ;; no) echo "Norwegian" ;; pl) echo "Polish" ;;
+  pt) echo "Portuguese" ;; ro) echo "Romanian" ;; ru) echo "Russian" ;;
+  sk) echo "Slovak" ;; sl) echo "Slovenian" ;; sq) echo "Albanian" ;;
+  sr) echo "Serbian" ;; sv) echo "Swedish" ;; th) echo "Thai" ;;
+  tr) echo "Turkish" ;; uk) echo "Ukrainian" ;; ur) echo "Urdu" ;;
+  vi) echo "Vietnamese" ;; zh) echo "Chinese" ;;
+  esac
+}
+
+if [ -f "$CFG" ]; then
+  mapfile -t codes < <(jq -r '(.models // {}) | keys[]' "$CFG" 2>/dev/null)
+  for code in "${codes[@]}"; do
+    name="$(lang_name "$code")"
+    [ -z "$name" ] && continue
+    if echo "$layout" | grep -qi "$name"; then
+      echo "$code"
+      exit 0
+    fi
+  done
+fi
+
+echo "en"

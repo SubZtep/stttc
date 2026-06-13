@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Speach-To-Text Configuration",
+  "description": "The sst models’ configuration",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "A field for the JSON schema specification: https://json-schema.org/",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Schema"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "url": {
+      "type": "string",
+      "default": "http://localhost:8000/v1",
+      "description": "OpenAI compatible endpoint"
+    },
+    "model": {
+      "type": "string",
+      "default": "Systran/faster-whisper-small",
+      "description": "Default (multi-language) model"
+    },
+    "device": {
+      "type": "string",
+      "default": "default",
+      "description": "ffmpeg/pulse input device"
+    },
+    "bin": {
+      "type": "string",
+      "default": "$HOME/.local/bin",
+      "description": "User’s executable binaries"
+    },
+    "container": {
+      "type": "string",
+      "default": "speaches",
+      "description": "Speaches server container name"
+    },
+    "hypr": {
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "string",
+          "default": "$HOME/.config/hypr/bindings.conf",
+          "description": "Hyprland keybinds config"
+        },
+        "key": {
+          "type": "string",
+          "default": "SUPER, grave",
+          "description": "Hotkey for speech recording"
+        },
+        "mark": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "string"
+          },
+          "description": "Start and end marker of updates in the config file"
+        }
+      },
+      "additionalProperties": false
+    },
+    "models": {
+      "type": "object",
+      "description": "Language-specific model overrides",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Schema": {
+      "type": "string"
+    }
+  }
+}
