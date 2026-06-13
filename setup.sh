@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
 # Setup for stt push-to-talk — run it straight from the web:
-#   curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.0/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.1/setup.sh | bash
 #
 # Downloads the scripts, starts the speaches server, downloads the model, and
 # adds the Hyprland keybinding. Re-running is safe. Undo with:
-#   curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.0/setup.sh | bash -s -- --uninstall
+#   curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.1/setup.sh | bash -s -- --uninstall
 #
 set -euo pipefail
 
 REPO="${STT_REPO:-SubZtep/stt}"
-REF="${STT_REF:-v0.1.0}"
+REF="${STT_REF:-v0.1.1}"
 BASE="https://raw.githubusercontent.com/$REPO/$REF"
 CONFIG_FILE="$HOME/.config/stt.json"
 

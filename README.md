@@ -9,7 +9,7 @@ A small bash script pipes your mic to a local [Speaches](https://speaches.ai) (W
 Run from a terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.0/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.1/setup.sh | bash
 ```
 
 Automatic installation steps:
@@ -53,7 +53,7 @@ Re-running is safe. Linux/Hyprland only.
 ## Uninstall
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.0/setup.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/SubZtep/stt/v0.1.1/setup.sh | bash -s -- --uninstall
 ```
 
 Removes the scripts, the config, the keybinding, the server, and the downloaded models.
