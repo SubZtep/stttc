@@ -209,12 +209,13 @@ if have hyprctl; then
     {
       echo "$MARK_START"
       echo "bind  = $KEY, exec, STT_LANGUAGE=\$(stt-layout-lang) stt"
-      # Kill the exact ffmpeg PID recorded by the stt script, guarded by lockfile.
-      echo "bindr = $KEY, exec, sh -c '[ -f /tmp/stt.recording ] && kill -INT \"\$(cat /tmp/stt.ffmpeg.pid 2>/dev/null)\" 2>/dev/null || true'"
-      # Fallback: if the modifier is released before the key, the naked key
-      # release still stops the recording (guarded by /tmp/stt.recording).
+      # Remove lockfile (signals stt to stop even during server readiness wait)
+      # and kill the exact ffmpeg PID if recording is already in progress.
+      local _bindr_cmd="sh -c 'rm -f /tmp/stt.recording; kill -INT \"\$(cat /tmp/stt.ffmpeg.pid 2>/dev/null)\" 2>/dev/null; true'"
+      echo "bindr = $KEY, exec, $_bindr_cmd"
+      # Fallback: if the modifier is released before the key.
       _key_only="${KEY##*, }"
-      echo "bindr = , $_key_only, exec, sh -c '[ -f /tmp/stt.recording ] && kill -INT \"\$(cat /tmp/stt.ffmpeg.pid 2>/dev/null)\" 2>/dev/null || true'"
+      echo "bindr = , $_key_only, exec, $_bindr_cmd"
       echo "$MARK_END"
     } >>"$HYPR_CONF"
     hyprctl reload >/dev/null 2>&1 || true

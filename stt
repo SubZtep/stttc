@@ -62,9 +62,13 @@ _die() { rm -f "$_RECORDING_FILE"; echo "$1" >&2; _notify "Error: $1"; exit 1; }
 
 _notify "$_msg_listening"
 
+# Mark active immediately so bindr can interrupt the readiness wait
+touch "$_RECORDING_FILE"
+
 # MARK: ---- wait for server to be ready (handles container startup delay) ----
 _server_ready=0
 for _i in $(seq 1 30); do
+  [ -f "$_RECORDING_FILE" ] || exit 0
   curl -sf "$STT_URL/models" >/dev/null 2>&1 && _server_ready=1 && break
   sleep 1
 done
@@ -74,9 +78,6 @@ done
 in_args=(-f pulse -i "${STT_DEVICE:-$_default_device}")
 tmp="$(mktemp -t stt.XXXXXX.wav)"
 _rc_file="$(mktemp -t stt.rc.XXXXXX)"
-
-# Mark that we're actively recording
-touch "$_RECORDING_FILE"
 
 trap '' INT TERM
 
