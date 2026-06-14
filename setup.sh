@@ -98,11 +98,8 @@ MARK_END="$(cfg '.hypr.mark[1]')"; MARK_END="${MARK_END:-# <<< stt <<<}"
 if [ "${1:-}" = "--uninstall" ]; then
   echo "Uninstalling stt…"
 
-  rm -f "$BIN_DIR/stt" "$BIN_DIR/stt-layout-lang" "$BIN_DIR/stt-check" "$BIN_DIR/stt-download" "$BIN_DIR/stt-toggle" "$BIN_DIR/stt-status"
+  rm -f "$BIN_DIR/stt" "$BIN_DIR/stt-layout-lang" "$BIN_DIR/stt-info" "$BIN_DIR/stt-toggle"
   echo "  removed scripts"
-
-  rm -rf "$HOME/.local/share/stt"
-  echo "  removed sound files"
 
   if [ -f "$CONFIG_FILE" ]; then
     rm -f "$CONFIG_FILE"
@@ -137,7 +134,7 @@ fi
 
 echo "Downloading scripts -> $BIN_DIR"
 mkdir -p "$BIN_DIR"
-for f in stt stt-layout-lang stt-check stt-download stt-toggle stt-status; do
+for f in stt stt-layout-lang stt-info stt-toggle; do
   curl -fsSL "$BASE/$f" -o "$BIN_DIR/$f"
   chmod +x "$BIN_DIR/$f"
   echo "  $f"
@@ -147,17 +144,6 @@ case ":$PATH:" in
 *":$BIN_DIR:"*) ;;
 *) echo "NOTE: $BIN_DIR is not on PATH — add it to your shell profile." ;;
 esac
-
-SOUND_DIR="$HOME/.local/share/stt"
-SOUND_FILE="$SOUND_DIR/open-a-wine.mp3"
-mkdir -p "$SOUND_DIR"
-local_sound="$(dirname "$0")/assets/827991__spinopel__open-a-wine.mp3"
-if [ -f "$local_sound" ]; then
-  cp "$local_sound" "$SOUND_FILE"
-else
-  curl -fsSL "$BASE/assets/827991__spinopel__open-a-wine.mp3" -o "$SOUND_FILE"
-fi
-echo "Sound: $SOUND_FILE"
 
 # ---------------------------------------------------------------- server
 
@@ -194,7 +180,7 @@ for _ in $(seq 1 30); do
   curl -fsS "$url/models" >/dev/null 2>&1 && break
   sleep 1
 done
-STT_ALIASES="$ALIASES_FILE" STT_CONFIG="$CONFIG_FILE" "$BIN_DIR/stt-download" multi
+STT_ALIASES="$ALIASES_FILE" STT_CONFIG="$CONFIG_FILE" "$BIN_DIR/stt-info" download multi
 
 # ---------------------------------------------------------------- keybinding
 

@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# stt-info — inspect and manage the stt setup
+#
+# Usage:
+#   stt-info              show live status (processes, server, models)
+#   stt-info check        check which alias models are downloaded
+#   stt-info download     download all alias models
+#   stt-info download hu en ...  download specific languages
+set -uo pipefail
+
+CONFIG_FILE="${STT_CONFIG:-$HOME/.config/stt/config.json}"
+ALIASES_FILE="${STT_ALIASES:-$HOME/.config/stt/aliases.json}"
+cfg() { [ -f "$CONFIG_FILE" ] && jq -r "$1 // empty" "$CONFIG_FILE" 2>/dev/null || true; }
+url="$(cfg '.url')"; url="${url:-http://localhost:8000/v1}"
+
+red='\e[31m'; yellow='\e[33m'; green='\e[32m'; cyan='\e[36m'; bold='\e[1m'; reset='\e[0m'
+
+cmd="${1:-status}"; [ $# -gt 0 ] && shift || true
+
+# ---------------------------------------------------------------- status
+_status() {
+  local _PID_FILE="/tmp/stt.pid"
+  local _FFMPEG_PID_FILE="/tmp/stt.ffmpeg.pid"
+  local _RECORDING_FILE="/tmp/stt.recording"
+
+  echo -e "${bold}stt status${reset}"
+  echo
+
+  if [ -f "$_PID_FILE" ]; then
+    local _pid; _pid="$(cat "$_PID_FILE" 2>/dev/null || true)"
+    if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then
+      if [ -f "$_RECORDING_FILE" ]; then
+        echo -e "  stt      ${green}recording${reset}     pid=$_pid"
+      else
+        echo -e "  stt      ${cyan}transcribing${reset}  pid=$_pid"
+      fi
+    else
+      echo -e "  stt      ${yellow}stale pid${reset}     pid=$_pid (not running)"
+    fi
+  else
+    echo -e "  stt      idle"
+  fi
+
+  local _tracked_ffmpeg; _tracked_ffmpeg="$(cat "$_FFMPEG_PID_FILE" 2>/dev/null || true)"
+  mapfile -t _ffmpeg_pids < <(pgrep -x ffmpeg 2>/dev/null || true)
+
+  if [ "${#_ffmpeg_pids[@]}" -eq 0 ]; then
+    echo -e "  ffmpeg   idle"
+  elif [ "${#_ffmpeg_pids[@]}" -eq 1 ]; then
+    local _pid="${_ffmpeg_pids[0]}"
+    if [ "$_pid" = "$_tracked_ffmpeg" ]; then
+      echo -e "  ffmpeg   ${green}recording${reset}     pid=$_pid"
+    else
+      echo -e "  ffmpeg   ${yellow}untracked${reset}     pid=$_pid  ← not started by stt"
+    fi
+  else
+    echo -e "  ffmpeg   ${red}${#_ffmpeg_pids[@]} instances running!${reset}"
+    for _pid in "${_ffmpeg_pids[@]}"; do
+      if [ "$_pid" = "$_tracked_ffmpeg" ]; then
+        echo -e "           ${green}tracked${reset}   pid=$_pid"
+      else
+        echo -e "           ${red}orphan${reset}    pid=$_pid  ← kill with: kill -INT $_pid"
+      fi
+    done
+  fi
+
+  echo
+  local _http; _http="$(curl -s -o /dev/null -w '%{http_code}' "$url/models" 2>/dev/null || true)"
+  if [ "$_http" = "200" ]; then
+    echo -e "  speaches ${green}online${reset}      $url"
+    local _models; _models="$(curl -s "$url/models" 2>/dev/null | jq -r '.data[] | select(.task == "automatic-speech-recognition") | .id' 2>/dev/null || true)"
+    if [ -n "$_models" ]; then
+      echo -e "  models   $(echo "$_models" | wc -l) downloaded"
+      while IFS= read -r _m; do
+        echo -e "           $_m"
+      done <<< "$_models"
+    fi
+  else
+    echo -e "  speaches ${red}offline${reset}     $url  (HTTP $_http)"
+  fi
+
+  local _curl_to_speaches; _curl_to_speaches="$(pgrep -a curl 2>/dev/null | grep -c "audio/transcriptions" || true)"
+  if [ "$_curl_to_speaches" -gt 1 ]; then
+    echo -e "\n  ${red}warning: $_curl_to_speaches concurrent transcription requests${reset}"
+  elif [ "$_curl_to_speaches" -eq 1 ]; then
+    echo -e "\n  ${cyan}1 transcription request in flight${reset}"
+  fi
+
+  echo
+}
+
+# ---------------------------------------------------------------- check
+_check() {
+  mapfile -t alias_keys < <(jq -r 'to_entries[] | select(.value.model) | .key' "$ALIASES_FILE" 2>/dev/null || true)
+  local downloaded; downloaded="$(curl -s "$url/models" 2>/dev/null | jq -r '.data[].id' 2>/dev/null || true)"
+
+  local pass=0 fail=0
+  echo "Checking models against $url"
+  echo
+
+  for key in "${alias_keys[@]}"; do
+    local model name
+    model="$(jq -r ".\"$key\".model // empty" "$ALIASES_FILE")"
+    name="$(jq -r ".\"$key\".name // empty" "$ALIASES_FILE")"
+    if echo "$downloaded" | grep -qxF "$model"; then
+      printf "  ${green}OK${reset}  %-6s %-16s %s\n" "$key" "$name" "$model"
+      ((pass++)) || true
+    else
+      printf "  ${yellow}--${reset}  %-6s %-16s %s\n" "$key" "$name" "$model"
+      ((fail++)) || true
+    fi
+  done
+
+  echo
+  echo "Result: $pass downloaded, $fail not yet fetched"
+  [ "$fail" -eq 0 ]
+}
+
+# ---------------------------------------------------------------- download
+_download() {
+  local keys=()
+  if [ $# -gt 0 ]; then
+    keys=("$@")
+  else
+    mapfile -t keys < <(jq -r 'to_entries[] | select(.value.model) | .key' "$ALIASES_FILE" 2>/dev/null || true)
+  fi
+
+  local downloaded; downloaded="$(curl -s "$url/models" 2>/dev/null | jq -r '.data[].id' 2>/dev/null || true)"
+
+  for key in "${keys[@]}"; do
+    local model name
+    model="$(jq -r ".\"$key\".model // empty" "$ALIASES_FILE")"
+    name="$(jq -r ".\"$key\".name // empty" "$ALIASES_FILE")"
+
+    if [ -z "$model" ]; then
+      printf "  ${red}ERR${reset}  %-6s unknown alias\n" "$key"
+      continue
+    fi
+
+    if echo "$downloaded" | grep -qxF "$model"; then
+      printf "  ${green}OK${reset}   %-6s %-16s already downloaded\n" "$key" "$name"
+      continue
+    fi
+
+    printf "  ${yellow}…${reset}    %-6s %-16s downloading %s\n" "$key" "$name" "$model"
+    local code; code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$url/models/$key" 2>/dev/null)"
+    if [ "$code" = "200" ]; then
+      printf "  ${green}OK${reset}   %-6s %-16s done\n" "$key" "$name"
+    else
+      printf "  ${red}FAIL${reset} %-6s %-16s HTTP %s\n" "$key" "$name" "$code"
+    fi
+  done
+}
+
+# ---------------------------------------------------------------- dispatch
+case "$cmd" in
+  status)   _status ;;
+  check)    _check ;;
+  download) _download "$@" ;;
+  *)
+    echo "Usage: stt-info [status|check|download [lang...]]" >&2
+    exit 1
+    ;;
+esac

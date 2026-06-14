@@ -71,9 +71,10 @@ _beep() {
     -t "$_dur_s" \
     -f wav - 2>/dev/null | pw-play - &>/dev/null &
 }
-_beep_start() { _beep 880 80; }
+_beep_start()   { _beep 880 80; }
 _beep_release() { _beep 660 60; sleep 0.08; _beep 660 60; }
-_beep_error() { _beep 400 200; }
+_beep_success() { _beep 660 80; sleep 0.10; _beep 880 120; }
+_beep_error()   { _beep 400 200; }
 
 _die() {
   rm -f "$_RECORDING_FILE"
@@ -228,4 +229,4 @@ rm -f "$_RECORDING_FILE"
 printf '\n'
 wl-copy -- "$text"
 _notify "$text" 3000
-pw-play "$HOME/.local/share/stt/open-a-wine.mp3" &>/dev/null &
+_beep_success

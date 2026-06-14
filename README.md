@@ -18,7 +18,7 @@ Automatic installation steps:
    _On Arch/Omarchy it offers to install missing ones via pacman._
 2. Create `~/.config/stt/config.json` from the [default configuration](./config/default.json) (if not already present).
 3. Copy [`model_aliases.json`](./config/model_aliases.json) to `~/.config/stt/aliases.json`.
-4. Download the scripts into user binaries.
+4. Download `stt`, `stt-layout-lang`, `stt-info`, `stt-toggle` into user binaries.
 5. Start the Speaches server and download the default (`multi`) model.
 6. Add the Hyprland keybinding (`SUPER` + `` ` ``).
 
@@ -27,10 +27,11 @@ Re-running is safe. Linux/Hyprland only.
 ## How it works
 
 ```
-[hold key]  → detect layout → "stt · Magyar / Hallgatom…" notification
+[hold key]  → detect layout → "stt · Magyar / Hallgatom… 20s" notification + beep
              → ffmpeg streams WAV live to Speaches during recording
-[release]   → recording stops → "Írás…" → Speaches transcribes
-             → result copied to clipboard + typed via notification
+             → notification counts down each second
+[release]   → recording stops → double-beep → Speaches transcribes
+             → result copied to clipboard + notification (auto-dismisses)
 ```
 
 Audio is piped directly to Speaches while you speak, so by the time you release the key the server has already received everything and just needs to run inference.
@@ -67,14 +68,14 @@ Language-to-model mapping lives in [`config/model_aliases.json`](./config/model_
     "model": "SubZtep/whisper-large-v3-hu-ct2-int8",
     "name": "Magyar",
     "listening": "Hallgatom…",
-    "typing": "Írás…"
+    "transcribing": "Átírás…"
   }
 }
 ```
 
 The active keyboard layout (detected via `hyprctl`) automatically picks the matching alias — no extra config needed. Language models are downloaded **on first use**, so only the models you actually speak are ever fetched.
 
-Notifications use the `name`, `listening`, and `typing` strings from the alias, so the UI speaks your language. `setup.sh` transforms this into the flat format Speaches expects and keeps the rich version in `~/.config/stt/aliases.json` for the client scripts to read.
+Notifications use the `name`, `listening`, and `transcribing` strings from the alias, so the UI speaks your language. `setup.sh` transforms this into the flat format Speaches expects and keeps the rich version in `~/.config/stt/aliases.json` for the client scripts to read.
 
 Re-run setup after editing `model_aliases.json` to apply changes.
 
@@ -99,7 +100,13 @@ STT_DEBUG=1 STT_LANGUAGE=en stt
 Check which models are available on your server:
 
 ```sh
-stt-check
+stt-info check
+```
+
+Show live recording/server status:
+
+```sh
+stt-info
 ```
 
 ## Uninstall
