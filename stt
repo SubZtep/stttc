@@ -17,6 +17,7 @@ _alias() { [ -f "$_ALIASES" ] && jq -r "$1 // empty" "$_ALIASES" 2>/dev/null || 
 
 # ---- single-instance: kill any previous stt and orphaned ffmpeg ----
 _PID_FILE="/tmp/stt.pid"
+_FFMPEG_PID_FILE="/tmp/stt.ffmpeg.pid"
 if [ -f "$_PID_FILE" ]; then
   _old_pid="$(cat "$_PID_FILE" 2>/dev/null || true)"
   if [ -n "$_old_pid" ] && kill -0 "$_old_pid" 2>/dev/null; then
@@ -25,9 +26,16 @@ if [ -f "$_PID_FILE" ]; then
   fi
 fi
 # also kill any ffmpeg left over from a missed bindr (key release not detected)
-pkill -INT -x ffmpeg 2>/dev/null || true
+if [ -f "$_FFMPEG_PID_FILE" ]; then
+  _old_ffmpeg_pid="$(cat "$_FFMPEG_PID_FILE" 2>/dev/null || true)"
+  if [ -n "$_old_ffmpeg_pid" ] && kill -0 "$_old_ffmpeg_pid" 2>/dev/null; then
+    kill -INT "$_old_ffmpeg_pid" 2>/dev/null || true
+  fi
+  rm -f "$_FFMPEG_PID_FILE"
+fi
 echo "$$" > "$_PID_FILE"
-trap 'rm -f "$_PID_FILE" "$tmp" "$_rc_file"' EXIT
+_RECORDING_FILE="/tmp/stt.recording"
+trap 'rm -f "$_PID_FILE" "$_RECORDING_FILE" "$_FFMPEG_PID_FILE" "$tmp" "$_rc_file"' EXIT
 
 # ---- config ----
 _default_url="$(_cfg '.url')"; _default_url="${_default_url:-http://localhost:8000/v1}"
@@ -50,7 +58,7 @@ _notify() {
   _notif_id="$(notify-send --print-id --replace-id="$_notif_id" -t 0 "stt · $_lang_name" "$1")"
   echo "$_notif_id" > "$_notif_id_file"
 }
-_die() { echo "$1" >&2; _notify "Error: $1"; exit 1; }
+_die() { rm -f "$_RECORDING_FILE"; echo "$1" >&2; _notify "Error: $1"; exit 1; }
 
 _notify "$_msg_listening"
 
@@ -58,6 +66,9 @@ _notify "$_msg_listening"
 in_args=(-f pulse -i "${STT_DEVICE:-$_default_device}")
 tmp="$(mktemp -t stt.XXXXXX.wav)"
 _rc_file="$(mktemp -t stt.rc.XXXXXX)"
+
+# Mark that we're actively recording
+touch "$_RECORDING_FILE"
 
 trap '' INT TERM
 
@@ -110,8 +121,15 @@ _vad_args=()
 [ -n "$_vad_json" ] && _vad_args=(-F "vad_parameters=$_vad_json")
 
 # ---- stream audio live to Speaches; tee saves for 404 fallback ----
+# ffmpeg is backgrounded inside the pipeline so the shell sets up all
+# three processes (ffmpeg|tee|curl) before any starts writing — no
+# named-pipe deadlock. We grab $! immediately after & to record the PID.
 _parse_response < <(
-  { ffmpeg -loglevel error "${in_args[@]}" -ac 1 -ar 16000 -t 60 -f wav - 2>/dev/null || true; } \
+  {
+    ffmpeg -loglevel error "${in_args[@]}" -ac 1 -ar 16000 -t 20 -f wav - 2>/dev/null &
+    echo $! > "$_FFMPEG_PID_FILE"
+    wait $!
+  } \
     | tee "$tmp" \
     | curl -s -N -m 120 -D - -X POST "$STT_URL/audio/transcriptions" \
         -H "Authorization: Bearer cant-be-empty" \
@@ -156,6 +174,9 @@ fi
 
 text="$(printf '%s' "$accumulated" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 [ -n "$text" ] || _die "empty transcript"
+
+# Recording done — clear the lockfile
+rm -f "$_RECORDING_FILE"
 
 printf '\n'
 wl-copy -- "$text"

@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# stt-toggle — press once to start recording, press again to stop and transcribe.
+#
+# Alternative to push-to-talk: no reliance on key-release events.
+#
+# Usage:
+#   bind = SUPER, grave, exec, stt-toggle
+set -uo pipefail
+
+PID_FILE="/tmp/stt.pid"
+RECORDING_FILE="/tmp/stt.recording"
+FFMPEG_PID_FILE="/tmp/stt.ffmpeg.pid"
+
+# Check if a recording is currently active
+if [ -f "$RECORDING_FILE" ] && [ -f "$PID_FILE" ]; then
+  stt_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  if [ -n "$stt_pid" ] && kill -0 "$stt_pid" 2>/dev/null; then
+    # Recording is active — stop it by sending INT to the exact ffmpeg PID.
+    ffmpeg_pid="$(cat "$FFMPEG_PID_FILE" 2>/dev/null || true)"
+    if [ -n "$ffmpeg_pid" ]; then
+      kill -INT "$ffmpeg_pid" 2>/dev/null || true
+    fi
+    exit 0
+  fi
+fi
+
+# Start fresh recording (run in background so the toggle script exits immediately)
+rm -f "$RECORDING_FILE"
+(STT_LANGUAGE="$(stt-layout-lang)" stt >/dev/null 2>&1) &

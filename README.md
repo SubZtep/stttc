@@ -35,7 +35,21 @@ Re-running is safe. Linux/Hyprland only.
 
 Audio is piped directly to Speaches while you speak, so by the time you release the key the server has already received everything and just needs to run inference.
 
-Pressing the key while a transcription is already in progress cancels it and starts a fresh recording — no stuck processes.
+### Missed release fallback
+
+If you release the modifier key (`SUPER`) before the actual key (`` ` ``), Hyprland's `bindr` may not fire. A second **fallback release binding** is installed: releasing the naked key alone will also stop the recording — but only if a recording is actually in progress (guarded by `/tmp/stt.recording`).
+
+### Toggle mode
+
+Prefer toggle over push-to-talk? Replace the Hyprland bindings with:
+
+```
+bind = SUPER, grave, exec, stt-toggle
+```
+
+Press once to start, press again to stop and transcribe. No reliance on key-release events at all.
+
+Pressing the key while a transcription is already in progress cancels it and starts a fresh recording — no stuck processes. The recording also auto-caps at 20 seconds in case a release event is completely lost.
 
 If the model for your current language isn't downloaded yet, `multi` (the multilingual fallback) handles that request while the correct model downloads in the background — seamless next time.
 

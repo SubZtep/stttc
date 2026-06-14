@@ -98,7 +98,7 @@ MARK_END="$(cfg '.hypr.mark[1]')"; MARK_END="${MARK_END:-# <<< stt <<<}"
 if [ "${1:-}" = "--uninstall" ]; then
   echo "Uninstalling stt…"
 
-  rm -f "$BIN_DIR/stt" "$BIN_DIR/stt-layout-lang" "$BIN_DIR/stt-check" "$BIN_DIR/stt-download"
+  rm -f "$BIN_DIR/stt" "$BIN_DIR/stt-layout-lang" "$BIN_DIR/stt-check" "$BIN_DIR/stt-download" "$BIN_DIR/stt-toggle"
   echo "  removed scripts"
 
   rm -rf "$HOME/.local/share/stt"
@@ -137,7 +137,7 @@ fi
 
 echo "Downloading scripts -> $BIN_DIR"
 mkdir -p "$BIN_DIR"
-for f in stt stt-layout-lang stt-check stt-download; do
+for f in stt stt-layout-lang stt-check stt-download stt-toggle; do
   curl -fsSL "$BASE/$f" -o "$BIN_DIR/$f"
   chmod +x "$BIN_DIR/$f"
   echo "  $f"
@@ -208,7 +208,12 @@ if have hyprctl; then
     {
       echo "$MARK_START"
       echo "bind  = $KEY, exec, STT_LANGUAGE=\$(stt-layout-lang) stt"
-      echo "bindr = $KEY, exec, pkill -INT ffmpeg"
+      # Kill the exact ffmpeg PID recorded by the stt script, guarded by lockfile.
+      echo "bindr = $KEY, exec, sh -c '[ -f /tmp/stt.recording ] && kill -INT \"\$(cat /tmp/stt.ffmpeg.pid 2>/dev/null)\" 2>/dev/null || true'"
+      # Fallback: if the modifier is released before the key, the naked key
+      # release still stops the recording (guarded by /tmp/stt.recording).
+      _key_only="${KEY##*, }"
+      echo "bindr = , $_key_only, exec, sh -c '[ -f /tmp/stt.recording ] && kill -INT \"\$(cat /tmp/stt.ffmpeg.pid 2>/dev/null)\" 2>/dev/null || true'"
       echo "$MARK_END"
     } >>"$HYPR_CONF"
     hyprctl reload >/dev/null 2>&1 || true
