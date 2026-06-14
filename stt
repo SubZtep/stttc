@@ -53,12 +53,35 @@ _msg_transcribing="$(_alias ".\"$STT_MODEL\".transcribing // \"Transcribing…\"
 
 #  MARK: ---- notifications ----
 _notif_id_file="/tmp/stt.notif_id"
-_notif_id="$(cat "$_notif_id_file" 2>/dev/null || echo 0)"
 _notify() {
-  _notif_id="$(notify-send --print-id --replace-id="$_notif_id" -t 0 "stt · $_lang_name" "$1")"
-  echo "$_notif_id" > "$_notif_id_file"
+  local _id _timeout="${2:-0}"
+  _id="$(cat "$_notif_id_file" 2>/dev/null || echo 0)"
+  _id="$(notify-send --print-id --replace-id="$_id" -t "$_timeout" "stt · $_lang_name" "$1")"
+  echo "$_id" > "$_notif_id_file"
 }
-_die() { rm -f "$_RECORDING_FILE"; echo "$1" >&2; _notify "Error: $1"; exit 1; }
+
+# MARK: ---- audio feedback ----
+_RECORDING_LIMIT=20
+_beep() {
+  local _freq="$1" _dur_ms="$2"
+  local _dur_s; _dur_s="$(awk "BEGIN{printf \"%.3f\", $_dur_ms/1000}")"
+  ffmpeg -loglevel quiet \
+    -f lavfi -i "sine=frequency=${_freq}:sample_rate=44100" \
+    -af "afade=t=out:st=0:d=${_dur_s},volume=0.4" \
+    -t "$_dur_s" \
+    -f wav - 2>/dev/null | pw-play - &>/dev/null &
+}
+_beep_start() { _beep 880 80; }
+_beep_release() { _beep 660 60; sleep 0.08; _beep 660 60; }
+_beep_error() { _beep 400 200; }
+
+_die() {
+  rm -f "$_RECORDING_FILE"
+  echo "$1" >&2
+  _notify "Error: $1" 3000
+  _beep_error
+  exit 1
+}
 
 _notify "$_msg_listening"
 
@@ -78,6 +101,19 @@ done
 in_args=(-f pulse -i "${STT_DEVICE:-$_default_device}")
 tmp="$(mktemp -t stt.XXXXXX.wav)"
 _rc_file="$(mktemp -t stt.rc.XXXXXX)"
+
+_beep_start
+
+# Countdown timer: updates notification each second until key released
+(
+  for _s in $(seq $_RECORDING_LIMIT -1 1); do
+    [ -f "$_RECORDING_FILE" ] || exit 0
+    _notify "$_msg_listening ${_s}s" 1500
+    sleep 1
+    [ -f "$_RECORDING_FILE" ] || exit 0
+  done
+) &
+_TIMER_PID=$!
 
 trap '' INT TERM
 
@@ -129,7 +165,7 @@ _vad_json="$(_cfg '.vad // empty')"
 _vad_args=()
 [ -n "$_vad_json" ] && _vad_args=(-F "vad_parameters=$_vad_json")
 
-# ---- stream audio live to Speaches; tee saves for 404 fallback ----
+# MARK: ---- stream audio live to Speaches; tee saves for 404 fallback ----
 # ffmpeg is backgrounded inside the pipeline so the shell sets up all
 # three processes (ffmpeg|tee|curl) before any starts writing — no
 # named-pipe deadlock. We grab $! immediately after & to record the PID.
@@ -142,7 +178,6 @@ _parse_response < <(
     | tee "$tmp" \
     | curl -s -N -m 120 -D - -X POST "$STT_URL/audio/transcriptions" \
         -H "Authorization: Bearer cant-be-empty" \
-        -H "Accept: text/event-stream" \
         -F "file=@-;filename=audio.wav;type=audio/wav" \
         -F "model=$STT_MODEL" -F "response_format=text" \
         ${STT_LANGUAGE:+-F "language=$STT_LANGUAGE"} \
@@ -151,11 +186,15 @@ _parse_response < <(
   printf '%d' "$?" > "$_rc_file"
 )
 
-_notify "$_msg_transcribing"
+kill "$_TIMER_PID" 2>/dev/null || true
+_beep_release
+_notify "$_msg_transcribing" 1000
 trap - INT TERM
 
 _curl_rc="$(cat "$_rc_file" 2>/dev/null || echo 1)"
-[ "$_curl_rc" -eq 0 ] || _die "could not reach $STT_URL (curl exit: $_curl_rc)"
+# curl exits 255 when the ffmpeg pipe closes (SIGINT), even if the server
+# already received all audio and returned 200. Trust _http_status if we got one.
+[ -n "$_http_status" ] || _die "could not reach $STT_URL (curl exit: $_curl_rc)"
 
 # MARK: ---- 404: model not downloaded yet — fallback to multi, download in background ----
 if [ "$_http_status" = "404" ] && [ "$STT_MODEL" != "multi" ]; then
@@ -165,7 +204,6 @@ if [ "$_http_status" = "404" ] && [ "$STT_MODEL" != "multi" ]; then
   _parse_response < <(
     curl -s -N -m 120 -D - -X POST "$STT_URL/audio/transcriptions" \
       -H "Authorization: Bearer cant-be-empty" \
-      -H "Accept: text/event-stream" \
       -F "file=@$tmp;filename=audio.wav;type=audio/wav" \
       -F "model=multi" -F "response_format=text" \
       ${STT_LANGUAGE:+-F "language=$STT_LANGUAGE"} \
@@ -189,5 +227,5 @@ rm -f "$_RECORDING_FILE"
 
 printf '\n'
 wl-copy -- "$text"
-_notify "$text"
+_notify "$text" 3000
 pw-play "$HOME/.local/share/stt/open-a-wine.mp3" &>/dev/null &
