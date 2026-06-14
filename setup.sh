@@ -98,6 +98,9 @@ if [ "${1:-}" = "--uninstall" ]; then
   rm -f "$BIN_DIR/stt" "$BIN_DIR/stt-layout-lang" "$BIN_DIR/stt-check"
   echo "  removed scripts"
 
+  rm -rf "$HOME/.local/share/stt"
+  echo "  removed sound files"
+
   if [ -f "$CONFIG_FILE" ]; then
     rm -f "$CONFIG_FILE"
     echo "  removed config ($CONFIG_FILE)"
@@ -143,6 +146,17 @@ case ":$PATH:" in
 *":$BIN_DIR:"*) ;;
 *) echo "NOTE: $BIN_DIR is not on PATH — add it to your shell profile." ;;
 esac
+
+SOUND_DIR="$HOME/.local/share/stt"
+SOUND_FILE="$SOUND_DIR/open-a-wine.mp3"
+mkdir -p "$SOUND_DIR"
+local_sound="$(dirname "$0")/assets/827991__spinopel__open-a-wine.mp3"
+if [ -f "$local_sound" ]; then
+  cp "$local_sound" "$SOUND_FILE"
+else
+  curl -fsSL "$BASE/assets/827991__spinopel__open-a-wine.mp3" -o "$SOUND_FILE"
+fi
+echo "Sound: $SOUND_FILE"
 
 # ---------------------------------------------------------------- server
 

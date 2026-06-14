@@ -35,32 +35,97 @@ STT_MODEL="${STT_MODEL:-$_default_model}"
 in_args=(-f pulse -i "${STT_DEVICE:-$_default_device}")
 
 tmp="$(mktemp -t stt.XXXXXX.wav)"
-trap 'rm -f "$tmp"' EXIT
+_rc_file="$(mktemp -t stt.rc.XXXXXX)"
+trap 'rm -f "$tmp" "$_rc_file"' EXIT
 
-# Record to a temp WAV. ffmpeg runs in the foreground and receives the stop
-# signal directly: a single Ctrl+C (terminal) makes ffmpeg finalize the WAV and
-# exit. The script ignores INT/TERM so it SURVIVES the same Ctrl+C and proceeds
-# to transcribe. For push-to-talk the key-release signals ffmpeg by name
-# (see README) — same clean-stop path.
-trap '' INT TERM # script ignores the stop signal
-ffmpeg -loglevel error "${in_args[@]}" -ac 1 -ar 16000 -y "$tmp"
-trap - INT TERM # ffmpeg has exited; restore defaults
+trap '' INT TERM
 
-[ -s "$tmp" ] || _die "no audio captured"
+_parse_response() {
+  local _in_headers=1
+  accumulated=""
+  _http_status=""
+  _content_type=""
 
-args=(-s -m 120 -w $'\n%{http_code}' -X POST "$STT_URL/audio/transcriptions"
-  -H "Authorization: Bearer cant-be-empty"
-  -F "file=@$tmp" -F "model=$STT_MODEL" -F "response_format=text")
-[ -n "${STT_LANGUAGE:-}" ] && args+=(-F "language=$STT_LANGUAGE")
+  while IFS= read -r _raw; do
+    _line="${_raw%$'\r'}"
+    if [ "$_in_headers" = "1" ]; then
+      if [ -z "$_line" ]; then
+        _in_headers=0
+      elif [ -z "$_http_status" ]; then
+        _tmp2="${_line#HTTP/* }"; _http_status="${_tmp2%% *}"
+      elif [[ "${_line,,}" == content-type:* ]]; then
+        _content_type="${_line#*: }"
+      fi
+      continue
+    fi
+    [ -z "$_line" ] && continue
+    if [[ "$_content_type" == *event-stream* ]]; then
+      case "$_line" in
+        "data: [DONE]") break ;;
+        "data: "*)
+          _chunk="$(printf '%s' "${_line#data: }" | jq -r '.text // empty' 2>/dev/null || true)"
+          [ -z "$_chunk" ] && continue
+          accumulated+="$_chunk"
+          printf '%s' "$_chunk"
+          _notify "$accumulated"
+          ;;
+      esac
+    else
+      # Plain text response — whole body is the transcript
+      accumulated+="$_line"
+    fi
+  done
+  # read stops at EOF without a trailing newline; capture the last partial line
+  if [ -n "$_raw" ] && [ "$_in_headers" = "0" ] && [[ "$_content_type" != *event-stream* ]]; then
+    _line="${_raw%$'\r'}"
+    [ -n "$_line" ] && accumulated+="$_line"
+  fi
+}
 
-resp="$(curl "${args[@]}")" || _die "could not reach $STT_URL"
-code="${resp##*$'\n'}"
-body="${resp%$'\n'*}"
-[ "$code" = 200 ] || _die "speaches error ($code): $body"
+# Stream WAV to Speaches while recording; tee saves to tmp for 404 fallback.
+_parse_response < <(
+  { ffmpeg -loglevel error "${in_args[@]}" -ac 1 -ar 16000 -f wav - 2>/dev/null || true; } \
+    | tee "$tmp" \
+    | curl -s -N -m 120 -D - -X POST "$STT_URL/audio/transcriptions" \
+        -H "Authorization: Bearer cant-be-empty" \
+        -H "Accept: text/event-stream" \
+        -F "file=@-;filename=audio.wav;type=audio/wav" \
+        -F "model=$STT_MODEL" -F "response_format=text" \
+        ${STT_LANGUAGE:+-F "language=$STT_LANGUAGE"} \
+        2>/dev/null
+  printf '%d' "$?" > "$_rc_file"
+)
 
-text="$(printf '%s' "$body" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+trap - INT TERM
+
+_curl_rc="$(cat "$_rc_file" 2>/dev/null || echo 1)"
+[ "$_curl_rc" -eq 0 ] || _die "could not reach $STT_URL (curl exit: $_curl_rc)"
+
+# Model not downloaded yet — trigger background download, retry from tmp with multi
+if [ "$_http_status" = "404" ] && [ "$STT_MODEL" != "multi" ]; then
+  curl -s -X POST "$STT_URL/models/$STT_MODEL" &>/dev/null &
+  _notify "Downloading $STT_MODEL, using multi…"
+  _parse_response < <(
+    curl -s -N -m 120 -D - -X POST "$STT_URL/audio/transcriptions" \
+      -H "Authorization: Bearer cant-be-empty" \
+      -H "Accept: text/event-stream" \
+      -F "file=@$tmp;filename=audio.wav;type=audio/wav" \
+      -F "model=multi" -F "response_format=text" \
+      ${STT_LANGUAGE:+-F "language=$STT_LANGUAGE"} \
+      2>/dev/null
+    printf '%d' "$?" > "$_rc_file"
+  )
+  _curl_rc="$(cat "$_rc_file" 2>/dev/null || echo 1)"
+  [ "$_curl_rc" -eq 0 ] || _die "could not reach $STT_URL (curl exit: $_curl_rc)"
+elif [ "$_http_status" != "200" ]; then
+  _die "speaches error ($_http_status)"
+fi
+
+text="$(printf '%s' "$accumulated" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+[ "${STT_DEBUG:-}" = "1" ] && echo "[stt] http=$_http_status ct=$_content_type raw=[${accumulated:0:120}]" >&2
 [ -n "$text" ] || _die "empty transcript"
 
-printf '%s\n' "$text"
+printf '\n'
 wl-copy -- "$text"
 _notify "$text"
+pw-play "$HOME/.local/share/stt/open-a-wine.mp3" &>/dev/null &

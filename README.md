@@ -2,7 +2,7 @@
 
 Minimalist **push-to-talk** dictation for **Hyprland**: hold a hotkey to talk, release to drop the transcribed text into your clipboard.
 
-A small bash script pipes your mic to a local [Speaches](https://speaches.ai) (Whisper) server — fully offline, language auto-picked from your keyboard layout.
+A small bash script pipes your mic **live** to a local [Speaches](https://speaches.ai) (Whisper) server — fully offline. Your language and speech recognition model are auto-picked from the active keyboard layout _(input.kb_layout in hyprland.conf)_.
 
 ## Setup
 
@@ -16,15 +16,24 @@ Automatic installation steps:
 
 1. Check dependencies (`docker`, `ffmpeg`, `wl-clipboard`, `libnotify`, `jq`, `hyprland`).\
    _On Arch/Omarchy it offers to install missing ones via pacman._
-2. Create `~/.config/stt/config.json` from the default configuration (if not already present).
-3. Copy `model_aliases.json` to `~/.config/stt/aliases.json`.
+2. Create `~/.config/stt/config.json` from the [default configuration](./config/default.json) (if not already present).
+3. Copy [`model_aliases.json`](./config/model_aliases.json) to `~/.config/stt/aliases.json`.
 4. Download the scripts into user binaries.
 5. Start the Speaches server and download the default (`multi`) model.
 6. Add the Hyprland keybinding (`SUPER` + `` ` ``).
 
 Re-running is safe. Linux/Hyprland only.
 
-> The first transcription after switching to a new language will pause while the model downloads — it's cached after that.
+## How it works
+
+```
+[hold key]  → ffmpeg records AND streams WAV live to Speaches
+[release]   → recording stops → Speaches transcribes → result copied to clipboard
+```
+
+Audio is piped directly to Speaches while you speak, so by the time you release the key the server has already received everything and just needs to run inference.
+
+If the model for your current language isn't downloaded yet, `multi` (the multilingual fallback) handles that request while the correct model downloads in the background — seamless next time.
 
 ## Configuration
 
@@ -36,10 +45,29 @@ Language-to-model mapping lives in [`config/model_aliases.json`](./config/model_
 
 The active keyboard layout (detected via `hyprctl`) automatically picks the matching alias — no extra config needed. Language models are downloaded **on first use**, so only the models you actually speak are ever fetched. Re-run setup after editing `model_aliases.json` to push the updated aliases to `~/.config/stt/aliases.json`.
 
-> **Upgrading from v0.3.0?** Config files moved to `~/.config/stt/`. Remove the old files before re-running setup:
-> ```sh
-> rm -f ~/.config/stt.json ~/.config/stt-aliases.json
-> ```
+### Environment overrides
+
+| Variable | Description |
+|---|---|
+| `STT_URL` | Speaches base URL (default: `http://localhost:8000/v1`) |
+| `STT_MODEL` | Model/alias to use (overrides config) |
+| `STT_LANGUAGE` | ISO 639-1 code — overrides layout detection |
+| `STT_DEVICE` | PulseAudio/PipeWire input device |
+| `STT_DEBUG` | Set to `1` to print HTTP status and raw response to stderr |
+
+## Debugging
+
+Run from a terminal to see what's happening:
+
+```sh
+STT_DEBUG=1 STT_LANGUAGE=en stt
+```
+
+Check which models are available on your server:
+
+```sh
+stt-check
+```
 
 ## Uninstall
 
@@ -48,3 +76,9 @@ curl -fsSL https://stt.demo.land/setup.sh | bash -s -- --uninstall
 ```
 
 Removes the scripts, the config, the keybinding, the server, and the downloaded models.
+
+## Language models
+
+Speaches runs Whisper models — these are speech recognition (ASR) models, not language models. They do one thing: convert audio waveforms to text. No reasoning, no generation, no chat.
+
+The VAD (Voice Activity Detection) is an even smaller separate model that just detects whether audio contains speech before passing it to Whisper.
