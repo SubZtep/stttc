@@ -99,12 +99,7 @@ if [ "${1:-}" = "--uninstall" ]; then
   echo "Uninstalling stt…"
 
   rm -f "$BIN_DIR/stt" "$BIN_DIR/stt-layout-lang" "$BIN_DIR/stt-info" "$BIN_DIR/stt-toggle"
-  # also remove old split scripts from previous installs
-  rm -f "$BIN_DIR/stt-check" "$BIN_DIR/stt-download" "$BIN_DIR/stt-status"
   echo "  removed scripts"
-
-  rm -rf "$HOME/.local/share/stt"
-  echo "  removed sound files (if any)"
 
   if [ -f "$CONFIG_FILE" ]; then
     rm -f "$CONFIG_FILE"
