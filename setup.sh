@@ -167,13 +167,24 @@ if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
   echo "Server: container '$CONTAINER' already exists — leaving it."
 else
   echo "Starting speaches server…"
+  _speaches_tag="0.9.0-rc.3"
+  _docker_extra_args=()
+  if have nvidia-smi && nvidia-smi --query-gpu=name --format=csv,noheader >/dev/null 2>&1; then
+    echo "  NVIDIA GPU detected — using CUDA image"
+    _speaches_tag="${_speaches_tag}-cuda"
+    _docker_extra_args+=(--gpus all)
+  else
+    echo "  No GPU detected — using CPU image"
+    _speaches_tag="${_speaches_tag}-cpu"
+  fi
   docker run -d \
     --name "$CONTAINER" \
     -p 8000:8000 \
     -e ENABLE_UI=False \
+    "${_docker_extra_args[@]}" \
     -v "$SPEACHES_ALIASES_FILE":/home/ubuntu/speaches/model_aliases.json \
     -v hf-hub-cache:/home/ubuntu/.cache/huggingface/hub \
-    ghcr.io/speaches-ai/speaches:0.9.0-rc.3-cpu >/dev/null
+    "ghcr.io/speaches-ai/speaches:${_speaches_tag}" >/dev/null
 fi
 
 echo "Downloading default model (multi)…"
