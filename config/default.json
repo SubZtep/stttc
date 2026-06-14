@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/SubZtep/stt/refs/tags/v0.10.1/config/schema.json",
+  "$schema": "https://raw.githubusercontent.com/SubZtep/stt/refs/tags/v0.10.2/config/schema.json",
   "url": "http://localhost:8000/v1",
   "model": "multi",
   "device": "default",
