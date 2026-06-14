@@ -35,7 +35,7 @@ if [ -f "$_FFMPEG_PID_FILE" ]; then
 fi
 echo "$$" > "$_PID_FILE"
 _RECORDING_FILE="/tmp/stt.recording"
-trap 'rm -f "$_PID_FILE" "$_RECORDING_FILE" "$_FFMPEG_PID_FILE" "$ffmpeg_pipe" "$tmp" "$_rc_file"' EXIT
+trap 'rm -f "$_PID_FILE" "$_RECORDING_FILE" "$_FFMPEG_PID_FILE" "$tmp" "$_rc_file"' EXIT
 
 # ---- config ----
 _default_url="$(_cfg '.url')"; _default_url="${_default_url:-http://localhost:8000/v1}"
@@ -121,18 +121,16 @@ _vad_args=()
 [ -n "$_vad_json" ] && _vad_args=(-F "vad_parameters=$_vad_json")
 
 # ---- stream audio live to Speaches; tee saves for 404 fallback ----
-# Use a named pipe so we can capture ffmpeg's PID exactly and kill it
-# safely later instead of relying on pkill.
-ffmpeg_pipe="$(mktemp -t stt_pipe.XXXXXX)"
-rm -f "$ffmpeg_pipe"
-mkfifo "$ffmpeg_pipe"
-
-ffmpeg -loglevel error "${in_args[@]}" -ac 1 -ar 16000 -t 20 -f wav - > "$ffmpeg_pipe" 2>/dev/null &
-FFMPEG_PID=$!
-echo "$FFMPEG_PID" > "$_FFMPEG_PID_FILE"
-
+# ffmpeg is backgrounded inside the pipeline so the shell sets up all
+# three processes (ffmpeg|tee|curl) before any starts writing — no
+# named-pipe deadlock. We grab $! immediately after & to record the PID.
 _parse_response < <(
-  tee "$tmp" < "$ffmpeg_pipe" \
+  {
+    ffmpeg -loglevel error "${in_args[@]}" -ac 1 -ar 16000 -t 20 -f wav - 2>/dev/null &
+    echo $! > "$_FFMPEG_PID_FILE"
+    wait $!
+  } \
+    | tee "$tmp" \
     | curl -s -N -m 120 -D - -X POST "$STT_URL/audio/transcriptions" \
         -H "Authorization: Bearer cant-be-empty" \
         -H "Accept: text/event-stream" \
@@ -143,10 +141,6 @@ _parse_response < <(
         2>/dev/null
   printf '%d' "$?" > "$_rc_file"
 )
-
-# Ensure ffmpeg is cleaned up (SIGINT from bindr, or natural EOF)
-wait "$FFMPEG_PID" 2>/dev/null || true
-rm -f "$ffmpeg_pipe"
 
 _notify "$_msg_transcribing"
 trap - INT TERM
