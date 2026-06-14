@@ -9,7 +9,7 @@
 #   STT_DEVICE    ffmpeg/pulse input device
 set -uo pipefail
 
-_CFG="$HOME/.config/stt.json"
+_CFG="$HOME/.config/stt/config.json"
 _cfg() {
   [ -f "$_CFG" ] && jq -r "$1 // empty" "$_CFG" 2>/dev/null || true
 }

@@ -12,7 +12,7 @@ set -euo pipefail
 REPO="${STT_REPO:-SubZtep/stt}"
 REF="${STT_REF:-v0.2.0}"
 BASE="https://raw.githubusercontent.com/$REPO/$REF"
-CONFIG_FILE="$HOME/.config/stt.json"
+CONFIG_FILE="$HOME/.config/stt/config.json"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -70,7 +70,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
   echo "Created config: $CONFIG_FILE"
 fi
 
-ALIASES_FILE="$HOME/.config/stt-aliases.json"
+ALIASES_FILE="$HOME/.config/stt/aliases.json"
 local_aliases="$(dirname "$0")/config/model_aliases.json"
 if [ -f "$local_aliases" ]; then
   cp "$local_aliases" "$ALIASES_FILE"
@@ -103,10 +103,11 @@ if [ "${1:-}" = "--uninstall" ]; then
     echo "  removed config ($CONFIG_FILE)"
   fi
 
-  if [ -f "$HOME/.config/stt-aliases.json" ]; then
-    rm -f "$HOME/.config/stt-aliases.json"
-    echo "  removed aliases ($HOME/.config/stt-aliases.json)"
+  if [ -f "$HOME/.config/stt/aliases.json" ]; then
+    rm -f "$HOME/.config/stt/aliases.json"
+    echo "  removed aliases ($HOME/.config/stt/aliases.json)"
   fi
+  rmdir --ignore-fail-on-non-empty "$HOME/.config/stt" 2>/dev/null || true
 
   if [ -f "$HYPR_CONF" ] && grep -qF "$MARK_START" "$HYPR_CONF"; then
     cp "$HYPR_CONF" "$HYPR_CONF.bak"

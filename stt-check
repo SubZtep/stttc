@@ -2,8 +2,8 @@
 # stt-check — verify all alias models are available on the speaches server
 set -uo pipefail
 
-CONFIG_FILE="${STT_CONFIG:-$HOME/.config/stt.json}"
-ALIASES_FILE="${STT_ALIASES:-$HOME/.config/stt-aliases.json}"
+CONFIG_FILE="${STT_CONFIG:-$HOME/.config/stt/config.json}"
+ALIASES_FILE="${STT_ALIASES:-$HOME/.config/stt/aliases.json}"
 cfg() { [ -f "$CONFIG_FILE" ] && jq -r "$1 // empty" "$CONFIG_FILE" 2>/dev/null || true; }
 
 url="$(cfg '.url')"; url="${url:-http://localhost:8000/v1}"
