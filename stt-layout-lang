@@ -2,14 +2,22 @@
 # Print a Whisper language code based on the active Hyprland keyboard layout.
 # Language codes come from the keys in ~/.config/stt/aliases.json — no extra
 # config needed. Adding a new language just requires adding it to model_aliases.json.
+#
+# Usage: stt-layout-lang [--verbose]
+#   --verbose   Print debug info: detected layout, checked aliases, and match result.
 set -uo pipefail
+
+VERBOSE="${STT_LAYOUT_VERBOSE:-}"
+[ "${1:-}" = "--verbose" ] && VERBOSE=1
 
 ALIASES="$HOME/.config/stt/aliases.json"
 
 layout="$(hyprctl devices -j 2>/dev/null |
   jq -r '[.keyboards[] | select(.main)][0].active_keymap // empty' 2>/dev/null)"
 
-[ -z "$layout" ] && echo "en" && exit 0
+[ -z "$layout" ] && { [ "$VERBOSE" = 1 ] && echo "No layout detected from hyprctl, fallback: en" >&2; echo "en"; exit 0; }
+
+[ "$VERBOSE" = 1 ] && echo "Detected layout: '$layout'" >&2
 
 # ISO 639-1 code -> substring that appears in Hyprland keymap display names
 lang_name() {
@@ -38,10 +46,13 @@ if [ -f "$ALIASES" ]; then
     name="$(lang_name "$code")"
     [ -z "$name" ] && continue
     if echo "$layout" | grep -qi "$name"; then
+      [ "$VERBOSE" = 1 ] && echo "Match: '$name' ($code)" >&2
       echo "$code"
       exit 0
     fi
+    [ "$VERBOSE" = 1 ] && echo "  no match: '$name' ($code)" >&2
   done
 fi
 
+[ "$VERBOSE" = 1 ] && echo "No match found, fallback: en" >&2
 echo "en"
