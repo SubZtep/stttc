@@ -71,12 +71,15 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 ALIASES_FILE="$HOME/.config/stt/aliases.json"
+SPEACHES_ALIASES_FILE="$HOME/.config/stt/speaches_aliases.json"
 local_aliases="$(dirname "$0")/config/model_aliases.json"
 if [ -f "$local_aliases" ]; then
   cp "$local_aliases" "$ALIASES_FILE"
 else
   curl -fsSL "$BASE/config/model_aliases.json" -o "$ALIASES_FILE"
 fi
+# Speaches needs a flat { "lang": "model-id" } map; transform from the rich format
+jq 'map_values(.model)' "$ALIASES_FILE" > "$SPEACHES_ALIASES_FILE"
 echo "Aliases: $ALIASES_FILE"
 
 cfg() { jq -r "$1 // empty" "$CONFIG_FILE"; }
@@ -179,12 +182,12 @@ else
     --name "$CONTAINER" \
     -p 8000:8000 \
     -e ENABLE_UI=False \
-    -v ./config/model_aliases.json:/home/ubuntu/speaches/model_aliases.json \
+    -v "$SPEACHES_ALIASES_FILE":/home/ubuntu/speaches/model_aliases.json \
     -v hf-hub-cache:/home/ubuntu/.cache/huggingface/hub \
     ghcr.io/speaches-ai/speaches:0.9.0-rc.3-cpu >/dev/null
 fi
 
-download_model "$(jq -r '.multi' "$ALIASES_FILE")"
+download_model "$(jq -r '.multi.model' "$ALIASES_FILE")"
 
 # ---------------------------------------------------------------- keybinding
 
@@ -198,8 +201,8 @@ if have hyprctl; then
     cp "$HYPR_CONF" "$HYPR_CONF.bak" 2>/dev/null || true
     {
       echo "$MARK_START"
-      echo "bind  = $KEY, exec, notify-send --print-id -t 0 \"stt\" \"Listening...\" > /tmp/stt.notif_id && STT_LANGUAGE=\$(stt-layout-lang) stt"
-      echo "bindr = $KEY, exec, pkill -INT ffmpeg; notify-send --replace-id=\$(cat /tmp/stt.notif_id 2>/dev/null || echo 0) -t 0 \"stt\" \"Typing...\""
+      echo "bind  = $KEY, exec, STT_LANGUAGE=\$(stt-layout-lang) stt"
+      echo "bindr = $KEY, exec, pkill -INT ffmpeg"
       echo "$MARK_END"
     } >>"$HYPR_CONF"
     hyprctl reload >/dev/null 2>&1 || true

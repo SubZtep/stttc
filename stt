@@ -7,39 +7,60 @@
 #   STT_MODEL     model for transcription
 #   STT_LANGUAGE  e.g. "hu"
 #   STT_DEVICE    ffmpeg/pulse input device
+#   STT_DEBUG     set to 1 to print http status and raw response to stderr
 set -uo pipefail
 
 _CFG="$HOME/.config/stt/config.json"
-_cfg() {
-  [ -f "$_CFG" ] && jq -r "$1 // empty" "$_CFG" 2>/dev/null || true
-}
+_ALIASES="$HOME/.config/stt/aliases.json"
+_cfg() { [ -f "$_CFG" ] && jq -r "$1 // empty" "$_CFG" 2>/dev/null || true; }
+_alias() { [ -f "$_ALIASES" ] && jq -r "$1 // empty" "$_ALIASES" 2>/dev/null || true; }
 
-_notif_id="$(cat /tmp/stt.notif_id 2>/dev/null || echo 0)"
-_notify() { notify-send --replace-id="$_notif_id" "stt" "$1"; }
-_die() { echo "$1" >&2; _notify "Error: $1"; exit 1; }
+# ---- single-instance: kill any previous stt and its children ----
+_PID_FILE="/tmp/stt.pid"
+if [ -f "$_PID_FILE" ]; then
+  _old_pid="$(cat "$_PID_FILE" 2>/dev/null || true)"
+  if [ -n "$_old_pid" ] && kill -0 "$_old_pid" 2>/dev/null; then
+    pkill -TERM -P "$_old_pid" 2>/dev/null || true
+    kill -TERM "$_old_pid" 2>/dev/null || true
+  fi
+fi
+echo "$$" > "$_PID_FILE"
+trap 'rm -f "$_PID_FILE" "$tmp" "$_rc_file"' EXIT
 
-_default_url="$(_cfg '.url')"
-_default_url="${_default_url:-http://localhost:8000/v1}"
-_default_model="$(_cfg '.model')"
-_default_model="${_default_model:-multi}"
-_default_device="$(_cfg '.device')"
-_default_device="${_default_device:-default}"
+# ---- config ----
+_default_url="$(_cfg '.url')"; _default_url="${_default_url:-http://localhost:8000/v1}"
+_default_model="$(_cfg '.model')"; _default_model="${_default_model:-multi}"
+_default_device="$(_cfg '.device')"; _default_device="${_default_device:-default}"
 
 STT_URL="${STT_URL:-$_default_url}"
 STT_MODEL="${STT_MODEL:-$_default_model}"
-
-# If a language is set, use it directly as the alias key (resolved server-side)
 [ -n "${STT_LANGUAGE:-}" ] && STT_MODEL="$STT_LANGUAGE"
 
-# Linux only (PulseAudio/PipeWire). STT_DEVICE overrides the input source.
-in_args=(-f pulse -i "${STT_DEVICE:-$_default_device}")
+# ---- i18n strings from aliases ----
+_lang_name="$(_alias ".\"$STT_MODEL\".name // \"$STT_MODEL\"")"
+_msg_listening="$(_alias ".\"$STT_MODEL\".listening // \"Listening…\"")"
+_msg_typing="$(_alias ".\"$STT_MODEL\".typing // \"Typing…\"")"
 
+# ---- notifications ----
+_notif_id_file="/tmp/stt.notif_id"
+_notif_id="$(cat "$_notif_id_file" 2>/dev/null || echo 0)"
+_notify() {
+  _notif_id="$(notify-send --print-id --replace-id="$_notif_id" -t 0 "stt · $_lang_name" "$1")"
+  echo "$_notif_id" > "$_notif_id_file"
+}
+_die() { echo "$1" >&2; _notify "Error: $1"; exit 1; }
+
+_notify "$_msg_listening"
+
+# ---- recording setup ----
+in_args=(-f pulse -i "${STT_DEVICE:-$_default_device}")
 tmp="$(mktemp -t stt.XXXXXX.wav)"
 _rc_file="$(mktemp -t stt.rc.XXXXXX)"
-trap 'rm -f "$tmp" "$_rc_file"' EXIT
 
 trap '' INT TERM
 
+# ---- response parser ----
+# Sets globals: accumulated, _http_status, _content_type
 _parse_response() {
   local _in_headers=1
   accumulated=""
@@ -71,18 +92,17 @@ _parse_response() {
           ;;
       esac
     else
-      # Plain text response — whole body is the transcript
       accumulated+="$_line"
     fi
   done
-  # read stops at EOF without a trailing newline; capture the last partial line
+  # capture final line if no trailing newline (Speaches plain-text responses)
   if [ -n "$_raw" ] && [ "$_in_headers" = "0" ] && [[ "$_content_type" != *event-stream* ]]; then
     _line="${_raw%$'\r'}"
     [ -n "$_line" ] && accumulated+="$_line"
   fi
 }
 
-# Stream WAV to Speaches while recording; tee saves to tmp for 404 fallback.
+# ---- stream audio live to Speaches; tee saves for 404 fallback ----
 _parse_response < <(
   { ffmpeg -loglevel error "${in_args[@]}" -ac 1 -ar 16000 -f wav - 2>/dev/null || true; } \
     | tee "$tmp" \
@@ -96,15 +116,17 @@ _parse_response < <(
   printf '%d' "$?" > "$_rc_file"
 )
 
+_notify "$_msg_typing"
 trap - INT TERM
 
 _curl_rc="$(cat "$_rc_file" 2>/dev/null || echo 1)"
 [ "$_curl_rc" -eq 0 ] || _die "could not reach $STT_URL (curl exit: $_curl_rc)"
 
-# Model not downloaded yet — trigger background download, retry from tmp with multi
+# ---- 404: model not downloaded yet — fallback to multi, download in background ----
 if [ "$_http_status" = "404" ] && [ "$STT_MODEL" != "multi" ]; then
   curl -s -X POST "$STT_URL/models/$STT_MODEL" &>/dev/null &
-  _notify "Downloading $STT_MODEL, using multi…"
+  _fallback_name="$(_alias '.multi.name // "Multilingual"')"
+  _notify "Downloading $_lang_name, using $_fallback_name…"
   _parse_response < <(
     curl -s -N -m 120 -D - -X POST "$STT_URL/audio/transcriptions" \
       -H "Authorization: Bearer cant-be-empty" \
@@ -121,8 +143,9 @@ elif [ "$_http_status" != "200" ]; then
   _die "speaches error ($_http_status)"
 fi
 
-text="$(printf '%s' "$accumulated" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 [ "${STT_DEBUG:-}" = "1" ] && echo "[stt] http=$_http_status ct=$_content_type raw=[${accumulated:0:120}]" >&2
+
+text="$(printf '%s' "$accumulated" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 [ -n "$text" ] || _die "empty transcript"
 
 printf '\n'

@@ -1,11 +1,56 @@
 {
-  "multi": "Systran/faster-whisper-small",
-  "de": "bofenghuang/whisper-large-v2-cv11-german-ct2",
-  "en": "Systran/faster-whisper-medium.en",
-  "fr": "bofenghuang/whisper-large-v2-cv11-french-ct2",
-  "hu": "SubZtep/whisper-large-v3-hu-ct2-int8",
-  "it": "LocalAI-io/whisper-base-it-ct2-int8",
-  "ja": "arc-r/faster-whisper-large-v2-mix-jp",
-  "pl": "mmalyska/distil-whisper-large-v3-pl-ct2",
-  "tr": "drascom/whisper-large-v3-turbo-turkish-ct2"
+  "multi": {
+    "model": "Systran/faster-whisper-small",
+    "name": "Multilingual",
+    "listening": "Listening…",
+    "typing": "Typing…"
+  },
+  "de": {
+    "model": "bofenghuang/whisper-large-v2-cv11-german-ct2",
+    "name": "Deutsch",
+    "listening": "Ich höre zu…",
+    "typing": "Schreibe…"
+  },
+  "en": {
+    "model": "Systran/faster-whisper-medium.en",
+    "name": "English",
+    "listening": "Listening…",
+    "typing": "Typing…"
+  },
+  "fr": {
+    "model": "bofenghuang/whisper-large-v2-cv11-french-ct2",
+    "name": "Français",
+    "listening": "J'écoute…",
+    "typing": "Écriture…"
+  },
+  "hu": {
+    "model": "SubZtep/whisper-large-v3-hu-ct2-int8",
+    "name": "Magyar",
+    "listening": "Hallgatom…",
+    "typing": "Írás…"
+  },
+  "it": {
+    "model": "LocalAI-io/whisper-base-it-ct2-int8",
+    "name": "Italiano",
+    "listening": "Ascolto…",
+    "typing": "Scrittura…"
+  },
+  "ja": {
+    "model": "arc-r/faster-whisper-large-v2-mix-jp",
+    "name": "日本語",
+    "listening": "聞いています…",
+    "typing": "入力中…"
+  },
+  "pl": {
+    "model": "mmalyska/distil-whisper-large-v3-pl-ct2",
+    "name": "Polski",
+    "listening": "Słucham…",
+    "typing": "Piszę…"
+  },
+  "tr": {
+    "model": "drascom/whisper-large-v3-turbo-turkish-ct2",
+    "name": "Türkçe",
+    "listening": "Dinliyorum…",
+    "typing": "Yazıyor…"
+  }
 }

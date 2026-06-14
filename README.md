@@ -2,7 +2,7 @@
 
 Minimalist **push-to-talk** dictation for **Hyprland**: hold a hotkey to talk, release to drop the transcribed text into your clipboard.
 
-A small bash script pipes your mic **live** to a local [Speaches](https://speaches.ai) (Whisper) server — fully offline. Your language and speech recognition model are auto-picked from the active keyboard layout _(input.kb_layout in hyprland.conf)_.
+A small bash script pipes your mic 🎤 **live** to a local [Speaches](https://speaches.ai) (Whisper) server — fully offline. Your language and speech recognition model are auto-picked from the active keyboard layout _(input.kb_layout in hyprland.conf)_.
 
 ## Setup
 
