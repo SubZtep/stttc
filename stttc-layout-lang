@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Print a Whisper language code based on the active Hyprland keyboard layout.
-# Language codes come from the keys in ~/.config/stt/aliases.json — no extra
+# Language codes come from the keys in ~/.config/stttc/aliases.json — no extra
 # config needed. Adding a new language just requires adding it to model_aliases.json.
 #
-# Usage: stt-layout-lang [--verbose]
+# Usage: stttc-layout-lang [--verbose]
 #   --verbose   Print debug info: detected layout, checked aliases, and match result.
 set -uo pipefail
 
-VERBOSE="${STT_LAYOUT_VERBOSE:-}"
+VERBOSE="${STTTC_LAYOUT_VERBOSE:-}"
 [ "${1:-}" = "--verbose" ] && VERBOSE=1
 
-ALIASES="$HOME/.config/stt/aliases.json"
+ALIASES="$HOME/.config/stttc/aliases.json"
 
 layout="$(hyprctl devices -j 2>/dev/null |
   jq -r '[.keyboards[] | select(.main)][0].active_keymap // empty' 2>/dev/null)"

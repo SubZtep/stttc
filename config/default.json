@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/SubZtep/stt/refs/tags/v0.12.0/config/schema.json",
+  "$schema": "https://raw.githubusercontent.com/SubZtep/stttc/refs/tags/v0.13.0/config/schema.json",
   "url": "http://localhost:8000/v1",
   "model": "multi",
   "device": "default",
@@ -8,6 +8,6 @@
   "hypr": {
     "config": "$HOME/.config/hypr/bindings.conf",
     "key": "SUPER, grave",
-    "mark": ["# >>> stt >>>", "# <<< stt <<<"]
+    "mark": ["# >>> stttc >>>", "# <<< stttc <<<"]
   }
 }

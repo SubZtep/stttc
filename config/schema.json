@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Speech-To-Text Configuration",
-  "description": "The stt models’ configuration",
+  "description": "The stttc models’ configuration",
   "type": "object",
   "properties": {
     "$schema": {

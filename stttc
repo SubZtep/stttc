@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# stt — record mic until SIGINT/SIGTERM, transcribe via a local speaches
+# stttc — record mic until SIGINT/SIGTERM, transcribe via a local speaches
 # server, print transcript to stdout (exit 0) or an error to stderr (exit 1).
 #
 # Env (optional, override config file values):
-#   STT_URL       base API URL
-#   STT_MODEL     model for transcription
-#   STT_LANGUAGE  e.g. "hu"
-#   STT_DEVICE    ffmpeg/pulse input device
-#   STT_DEBUG     set to 1 to print http status and raw response to stderr
+#   STTTC_URL       base API URL
+#   STTTC_MODEL     model for transcription
+#   STTTC_LANGUAGE  e.g. "hu"
+#   STTTC_DEVICE    ffmpeg/pulse input device
+#   STTTC_DEBUG     set to 1 to print http status and raw response to stderr
 set -uo pipefail
 
-_CFG="$HOME/.config/stt/config.json"
-_ALIASES="$HOME/.config/stt/aliases.json"
+_CFG="$HOME/.config/stttc/config.json"
+_ALIASES="$HOME/.config/stttc/aliases.json"
 _cfg() { [ -f "$_CFG" ] && jq -r "$1 // empty" "$_CFG" 2>/dev/null || true; }
 _alias() { [ -f "$_ALIASES" ] && jq -r "$1 // empty" "$_ALIASES" 2>/dev/null || true; }
 
-# MARK: ---- single-instance: kill any previous stt and orphaned ffmpeg ----
-_PID_FILE="/tmp/stt.pid"
-_FFMPEG_PID_FILE="/tmp/stt.ffmpeg.pid"
+# MARK: ---- single-instance: kill any previous stttc and orphaned ffmpeg ----
+_PID_FILE="/tmp/stttc.pid"
+_FFMPEG_PID_FILE="/tmp/stttc.ffmpeg.pid"
 if [ -f "$_PID_FILE" ]; then
   _old_pid="$(cat "$_PID_FILE" 2>/dev/null || true)"
   if [ -n "$_old_pid" ] && kill -0 "$_old_pid" 2>/dev/null; then
@@ -34,7 +34,7 @@ if [ -f "$_FFMPEG_PID_FILE" ]; then
   rm -f "$_FFMPEG_PID_FILE"
 fi
 echo "$$" > "$_PID_FILE"
-_RECORDING_FILE="/tmp/stt.recording"
+_RECORDING_FILE="/tmp/stttc.recording"
 trap 'rm -f "$_PID_FILE" "$_RECORDING_FILE" "$_FFMPEG_PID_FILE" "$tmp" "$_rc_file"' EXIT
 
 # MARK: ---- config ----
@@ -42,21 +42,21 @@ _default_url="$(_cfg '.url')"; _default_url="${_default_url:-http://localhost:80
 _default_model="$(_cfg '.model')"; _default_model="${_default_model:-multi}"
 _default_device="$(_cfg '.device')"; _default_device="${_default_device:-default}"
 
-STT_URL="${STT_URL:-$_default_url}"
-STT_MODEL="${STT_MODEL:-$_default_model}"
-[ -n "${STT_LANGUAGE:-}" ] && STT_MODEL="$STT_LANGUAGE"
+STTTC_URL="${STTTC_URL:-$_default_url}"
+STTTC_MODEL="${STTTC_MODEL:-$_default_model}"
+[ -n "${STTTC_LANGUAGE:-}" ] && STTTC_MODEL="$STTTC_LANGUAGE"
 
 # MARK: ---- i18n strings from aliases ----
-_lang_name="$(_alias ".\"$STT_MODEL\".name // \"$STT_MODEL\"")"
-_msg_listening="$(_alias ".\"$STT_MODEL\".listening // \"Listening…\"")"
-_msg_transcribing="$(_alias ".\"$STT_MODEL\".transcribing // \"Transcribing…\"")"
+_lang_name="$(_alias ".\"$STTTC_MODEL\".name // \"$STTTC_MODEL\"")"
+_msg_listening="$(_alias ".\"$STTTC_MODEL\".listening // \"Listening…\"")"
+_msg_transcribing="$(_alias ".\"$STTTC_MODEL\".transcribing // \"Transcribing…\"")"
 
 #  MARK: ---- notifications ----
-_notif_id_file="/tmp/stt.notif_id"
+_notif_id_file="/tmp/stttc.notif_id"
 _notify() {
   local _id _timeout="${2:-0}"
   _id="$(cat "$_notif_id_file" 2>/dev/null || echo 0)"
-  _id="$(notify-send --print-id --replace-id="$_id" -t "$_timeout" "stt · $_lang_name" "$1")"
+  _id="$(notify-send --print-id --replace-id="$_id" -t "$_timeout" "stttc · $_lang_name" "$1")"
   echo "$_id" > "$_notif_id_file"
 }
 
@@ -93,15 +93,15 @@ touch "$_RECORDING_FILE"
 _server_ready=0
 for _i in $(seq 1 30); do
   [ -f "$_RECORDING_FILE" ] || exit 0
-  curl -sf "$STT_URL/models" >/dev/null 2>&1 && _server_ready=1 && break
+  curl -sf "$STTTC_URL/models" >/dev/null 2>&1 && _server_ready=1 && break
   sleep 1
 done
-[ "$_server_ready" = "1" ] || _die "speaches not reachable at $STT_URL"
+[ "$_server_ready" = "1" ] || _die "speaches not reachable at $STTTC_URL"
 
 # MARK: ---- recording setup ----
-in_args=(-f pulse -i "${STT_DEVICE:-$_default_device}")
-tmp="$(mktemp -t stt.XXXXXX.wav)"
-_rc_file="$(mktemp -t stt.rc.XXXXXX)"
+in_args=(-f pulse -i "${STTTC_DEVICE:-$_default_device}")
+tmp="$(mktemp -t stttc.XXXXXX.wav)"
+_rc_file="$(mktemp -t stttc.rc.XXXXXX)"
 
 _beep_start
 
@@ -177,11 +177,11 @@ _parse_response < <(
     wait $!
   } \
     | tee "$tmp" \
-    | curl -s -N -m 120 -D - -X POST "$STT_URL/audio/transcriptions" \
+    | curl -s -N -m 120 -D - -X POST "$STTTC_URL/audio/transcriptions" \
         -H "Authorization: Bearer cant-be-empty" \
         -F "file=@-;filename=audio.wav;type=audio/wav" \
-        -F "model=$STT_MODEL" -F "response_format=text" \
-        ${STT_LANGUAGE:+-F "language=$STT_LANGUAGE"} \
+        -F "model=$STTTC_MODEL" -F "response_format=text" \
+        ${STTTC_LANGUAGE:+-F "language=$STTTC_LANGUAGE"} \
         "${_vad_args[@]}" \
         2>/dev/null
   printf '%d' "$?" > "$_rc_file"
@@ -195,30 +195,30 @@ trap - INT TERM
 _curl_rc="$(cat "$_rc_file" 2>/dev/null || echo 1)"
 # curl exits 255 when the ffmpeg pipe closes (SIGINT), even if the server
 # already received all audio and returned 200. Trust _http_status if we got one.
-[ -n "$_http_status" ] || _die "could not reach $STT_URL (curl exit: $_curl_rc)"
+[ -n "$_http_status" ] || _die "could not reach $STTTC_URL (curl exit: $_curl_rc)"
 
 # MARK: ---- 404: model not downloaded yet — fallback to multi, download in background ----
-if [ "$_http_status" = "404" ] && [ "$STT_MODEL" != "multi" ]; then
-  curl -s -X POST "$STT_URL/models/$STT_MODEL" &>/dev/null &
+if [ "$_http_status" = "404" ] && [ "$STTTC_MODEL" != "multi" ]; then
+  curl -s -X POST "$STTTC_URL/models/$STTTC_MODEL" &>/dev/null &
   _fallback_name="$(_alias '.multi.name // "Multilingual"')"
   _notify "Downloading $_lang_name, using $_fallback_name…"
   _parse_response < <(
-    curl -s -N -m 120 -D - -X POST "$STT_URL/audio/transcriptions" \
+    curl -s -N -m 120 -D - -X POST "$STTTC_URL/audio/transcriptions" \
       -H "Authorization: Bearer cant-be-empty" \
       -F "file=@$tmp;filename=audio.wav;type=audio/wav" \
       -F "model=multi" -F "response_format=text" \
-      ${STT_LANGUAGE:+-F "language=$STT_LANGUAGE"} \
+      ${STTTC_LANGUAGE:+-F "language=$STTTC_LANGUAGE"} \
       "${_vad_args[@]}" \
       2>/dev/null
     printf '%d' "$?" > "$_rc_file"
   )
   _curl_rc="$(cat "$_rc_file" 2>/dev/null || echo 1)"
-  [ "$_curl_rc" -eq 0 ] || _die "could not reach $STT_URL (curl exit: $_curl_rc)"
+  [ "$_curl_rc" -eq 0 ] || _die "could not reach $STTTC_URL (curl exit: $_curl_rc)"
 elif [ "$_http_status" != "200" ]; then
   _die "speaches error ($_http_status)"
 fi
 
-[ "${STT_DEBUG:-}" = "1" ] && echo "[stt] http=$_http_status ct=$_content_type raw=[${accumulated:0:120}]" >&2
+[ "${STTTC_DEBUG:-}" = "1" ] && echo "[stttc] http=$_http_status ct=$_content_type raw=[${accumulated:0:120}]" >&2
 
 text="$(printf '%s' "$accumulated" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 [ -n "$text" ] || _die "empty transcript"

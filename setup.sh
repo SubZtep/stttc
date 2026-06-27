@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 #
-# Setup for stt push-to-talk — run it straight from the web:
-#   curl -fsSL https://stt.demo.land/setup.sh | bash
+# Setup for stttc push-to-talk — run it straight from the web:
+#   curl -fsSL https://stttc.demo.land/setup.sh | bash
 #
 # Downloads the scripts, starts the speaches server, downloads the model, and
 # adds the Hyprland keybinding. Re-running is safe. Undo with:
-#   curl -fsSL https://stt.demo.land/setup.sh | bash -s -- --uninstall
+#   curl -fsSL https://stttc.demo.land/setup.sh | bash -s -- --uninstall
 #
 set -euo pipefail
 
-REPO="${STT_REPO:-SubZtep/stt}"
-REF="${STT_REF:-v0.12.0}"
+REPO="${STTTC_REPO:-SubZtep/stttc}"
+REF="${STTTC_REF:-v0.12.0}"
 BASE="https://raw.githubusercontent.com/$REPO/$REF"
-CONFIG_FILE="$HOME/.config/stt/config.json"
+CONFIG_FILE="$HOME/.config/stttc/config.json"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -70,8 +70,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
   echo "Created config: $CONFIG_FILE"
 fi
 
-ALIASES_FILE="$HOME/.config/stt/aliases.json"
-SPEACHES_ALIASES_FILE="$HOME/.config/stt/speaches_aliases.json"
+ALIASES_FILE="$HOME/.config/stttc/aliases.json"
+SPEACHES_ALIASES_FILE="$HOME/.config/stttc/speaches_aliases.json"
 local_aliases="$(dirname "$0")/config/model_aliases.json"
 if [ -f "$local_aliases" ]; then
   cp "$local_aliases" "$ALIASES_FILE"
@@ -90,15 +90,15 @@ CONTAINER="$(cfg '.container')"; CONTAINER="${CONTAINER:-speaches}"
 MODEL="$(cfg '.model')"; MODEL="${MODEL:-Systran/faster-whisper-small}"
 HYPR_CONF="$(expand "$(cfg '.hypr.config')")"; HYPR_CONF="${HYPR_CONF:-$HOME/.config/hypr/bindings.conf}"
 KEY="$(cfg '.hypr.key')"; KEY="${KEY:-SUPER, grave}"
-MARK_START="$(cfg '.hypr.mark[0]')"; MARK_START="${MARK_START:-# >>> stt >>>}"
-MARK_END="$(cfg '.hypr.mark[1]')"; MARK_END="${MARK_END:-# <<< stt <<<}"
+MARK_START="$(cfg '.hypr.mark[0]')"; MARK_START="${MARK_START:-# >>> stttc >>>}"
+MARK_END="$(cfg '.hypr.mark[1]')"; MARK_END="${MARK_END:-# <<< stttc <<<}"
 
 # ---------------------------------------------------------------- uninstall
 
 if [ "${1:-}" = "--uninstall" ]; then
-  echo "Uninstalling stt…"
+  echo "Uninstalling stttc…"
 
-  rm -f "$BIN_DIR/stt" "$BIN_DIR/stt-layout-lang" "$BIN_DIR/stt-info" "$BIN_DIR/stt-toggle"
+  rm -f "$BIN_DIR/stttc" "$BIN_DIR/stttc-layout-lang" "$BIN_DIR/stttc-info" "$BIN_DIR/stttc-toggle"
   echo "  removed scripts"
 
   if [ -f "$CONFIG_FILE" ]; then
@@ -106,9 +106,9 @@ if [ "${1:-}" = "--uninstall" ]; then
     echo "  removed config ($CONFIG_FILE)"
   fi
 
-  rm -f "$HOME/.config/stt/aliases.json" "$HOME/.config/stt/speaches_aliases.json"
+  rm -f "$HOME/.config/stttc/aliases.json" "$HOME/.config/stttc/speaches_aliases.json"
   echo "  removed aliases"
-  rmdir --ignore-fail-on-non-empty "$HOME/.config/stt" 2>/dev/null || true
+  rmdir --ignore-fail-on-non-empty "$HOME/.config/stttc" 2>/dev/null || true
 
   if [ -f "$HYPR_CONF" ] && grep -qF "$MARK_START" "$HYPR_CONF"; then
     cp "$HYPR_CONF" "$HYPR_CONF.bak"
@@ -134,7 +134,7 @@ fi
 
 echo "Downloading scripts -> $BIN_DIR"
 mkdir -p "$BIN_DIR"
-for f in stt stt-layout-lang stt-info stt-toggle; do
+for f in stttc stttc-layout-lang stttc-info stttc-toggle; do
   curl -fsSL "$BASE/$f" -o "$BIN_DIR/$f"
   chmod +x "$BIN_DIR/$f"
   echo "  $f"
@@ -175,12 +175,12 @@ else
 fi
 
 echo "Downloading default model (multi)…"
-# wait for server to be ready then download via stt-download
+# wait for server to be ready then download via stttc-download
 for _ in $(seq 1 30); do
   curl -fsS "$url/models" >/dev/null 2>&1 && break
   sleep 1
 done
-STT_ALIASES="$ALIASES_FILE" STT_CONFIG="$CONFIG_FILE" "$BIN_DIR/stt-info" download multi
+STTTC_ALIASES="$ALIASES_FILE" STTTC_CONFIG="$CONFIG_FILE" "$BIN_DIR/stttc-info" download multi
 
 # ---------------------------------------------------------------- keybinding
 
@@ -194,10 +194,10 @@ if have hyprctl; then
     cp "$HYPR_CONF" "$HYPR_CONF.bak" 2>/dev/null || true
     {
       echo "$MARK_START"
-      echo "bind  = $KEY, exec, STT_LANGUAGE=\$(stt-layout-lang) stt"
-      # Remove lockfile (signals stt to stop even during server readiness wait)
+      echo "bind  = $KEY, exec, STTTC_LANGUAGE=\$(stttc-layout-lang) stttc"
+      # Remove lockfile (signals stttc to stop even during server readiness wait)
       # and kill the exact ffmpeg PID if recording is already in progress.
-      local _bindr_cmd="sh -c 'rm -f /tmp/stt.recording; kill -INT \"\$(cat /tmp/stt.ffmpeg.pid 2>/dev/null)\" 2>/dev/null; true'"
+      local _bindr_cmd="sh -c 'rm -f /tmp/stttc.recording; kill -INT \"\$(cat /tmp/stttc.ffmpeg.pid 2>/dev/null)\" 2>/dev/null; true'"
       echo "bindr = $KEY, exec, $_bindr_cmd"
       # Fallback: if the modifier is released before the key.
       _key_only="${KEY##*, }"

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# stt-info — inspect and manage the stt setup
+# stttc-info — inspect and manage the stttc setup
 #
 # Usage:
-#   stt-info              show live status (processes, server, models)
-#   stt-info check        check which alias models are downloaded
-#   stt-info download     download all alias models
-#   stt-info download hu en ...  download specific languages
+#   stttc-info              show live status (processes, server, models)
+#   stttc-info check        check which alias models are downloaded
+#   stttc-info download     download all alias models
+#   stttc-info download hu en ...  download specific languages
 set -uo pipefail
 
-CONFIG_FILE="${STT_CONFIG:-$HOME/.config/stt/config.json}"
-ALIASES_FILE="${STT_ALIASES:-$HOME/.config/stt/aliases.json}"
+CONFIG_FILE="${STTTC_CONFIG:-$HOME/.config/stttc/config.json}"
+ALIASES_FILE="${STTTC_ALIASES:-$HOME/.config/stttc/aliases.json}"
 cfg() { [ -f "$CONFIG_FILE" ] && jq -r "$1 // empty" "$CONFIG_FILE" 2>/dev/null || true; }
 url="$(cfg '.url')"; url="${url:-http://localhost:8000/v1}"
 
@@ -19,26 +19,26 @@ cmd="${1:-status}"; [ $# -gt 0 ] && shift || true
 
 # ---------------------------------------------------------------- status
 _status() {
-  local _PID_FILE="/tmp/stt.pid"
-  local _FFMPEG_PID_FILE="/tmp/stt.ffmpeg.pid"
-  local _RECORDING_FILE="/tmp/stt.recording"
+  local _PID_FILE="/tmp/stttc.pid"
+  local _FFMPEG_PID_FILE="/tmp/stttc.ffmpeg.pid"
+  local _RECORDING_FILE="/tmp/stttc.recording"
 
-  echo -e "${bold}stt status${reset}"
+  echo -e "${bold}stttc status${reset}"
   echo
 
   if [ -f "$_PID_FILE" ]; then
     local _pid; _pid="$(cat "$_PID_FILE" 2>/dev/null || true)"
     if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then
       if [ -f "$_RECORDING_FILE" ]; then
-        echo -e "  stt      ${green}recording${reset}     pid=$_pid"
+        echo -e "  stttc      ${green}recording${reset}     pid=$_pid"
       else
-        echo -e "  stt      ${cyan}transcribing${reset}  pid=$_pid"
+        echo -e "  stttc      ${cyan}transcribing${reset}  pid=$_pid"
       fi
     else
-      echo -e "  stt      ${yellow}stale pid${reset}     pid=$_pid (not running)"
+      echo -e "  stttc      ${yellow}stale pid${reset}     pid=$_pid (not running)"
     fi
   else
-    echo -e "  stt      idle"
+    echo -e "  stttc      idle"
   fi
 
   local _tracked_ffmpeg; _tracked_ffmpeg="$(cat "$_FFMPEG_PID_FILE" 2>/dev/null || true)"
@@ -51,7 +51,7 @@ _status() {
     if [ "$_pid" = "$_tracked_ffmpeg" ]; then
       echo -e "  ffmpeg   ${green}recording${reset}     pid=$_pid"
     else
-      echo -e "  ffmpeg   ${yellow}untracked${reset}     pid=$_pid  ← not started by stt"
+      echo -e "  ffmpeg   ${yellow}untracked${reset}     pid=$_pid  ← not started by stttc"
     fi
   else
     echo -e "  ffmpeg   ${red}${#_ffmpeg_pids[@]} instances running!${reset}"
@@ -158,7 +158,7 @@ case "$cmd" in
   check)    _check ;;
   download) _download "$@" ;;
   *)
-    echo "Usage: stt-info [status|check|download [lang...]]" >&2
+    echo "Usage: stttc-info [status|check|download [lang...]]" >&2
     exit 1
     ;;
 esac
